@@ -118,75 +118,62 @@ vector<vector<string>> getAllPossibleSlicing(vector<uint32_t> &terms) {
     vector<vector<string>> retVal_string;
     int numOfTerm = terms.size();
     if (numOfTerm == 2) {
+        retVal.push_back({{0}});
+        retVal.push_back({{1}});
         retVal.push_back({{0, 1}});
-        retVal.push_back({{0}, {1}});
     } else if (numOfTerm == 3) {
+        retVal.push_back({{0}});
+        retVal.push_back({{1}});
+        retVal.push_back({{2}});
+        retVal.push_back({{0, 1}});
+        retVal.push_back({{0, 2}});
+        retVal.push_back({{1, 2}});
         retVal.push_back({{0, 1, 2}});
-        retVal.push_back({{0}, {1}, {2}});
-        retVal.push_back({{0, 1}, {2}});
-        retVal.push_back({{0, 2}, {1}});
-        retVal.push_back({{1, 2}, {0}});
     } else if (numOfTerm == 4) {
+        retVal.push_back({{0}});
+        retVal.push_back({{1}});
+        retVal.push_back({{2}});
+        retVal.push_back({{3}});
+        retVal.push_back({{0, 1}});
+        retVal.push_back({{0, 2}});
+        retVal.push_back({{0, 3}});
+        retVal.push_back({{1, 2}});
+        retVal.push_back({{1, 3}});
+        retVal.push_back({{2, 3}});
+        retVal.push_back({{0, 1, 2}});
+        retVal.push_back({{0, 1, 3}});
+        retVal.push_back({{0, 2, 3}});
         retVal.push_back({{0, 1, 2, 3}});
-        retVal.push_back({{0}, {1}, {2}, {3}});
-
-        retVal.push_back({{0, 1}, {2, 3}});
-        retVal.push_back({{0, 2}, {1, 3}});
-        retVal.push_back({{1, 2}, {0, 3}});
-
-        retVal.push_back({{0, 1}, {2}, {3}});
-        retVal.push_back({{0, 2}, {1}, {3}});
-        retVal.push_back({{0, 3}, {1}, {2}});
-        retVal.push_back({{1, 2}, {0}, {3}});
-        retVal.push_back({{1, 3}, {0}, {2}});
-        retVal.push_back({{2, 3}, {0}, {1}});
-
-        retVal.push_back({{0, 1, 2}, {3}});
-        retVal.push_back({{0, 1, 3}, {2}});
-        retVal.push_back({{0, 2, 3}, {1}});
-        retVal.push_back({{1, 2, 3}, {0}});
     } else if (numOfTerm == 5) {
+        retVal.push_back({{0}});
+        retVal.push_back({{1}});
+        retVal.push_back({{2}});
+        retVal.push_back({{3}});
+        retVal.push_back({{4}});
+        retVal.push_back({{0, 1}});
+        retVal.push_back({{0, 2}});
+        retVal.push_back({{0, 3}});
+        retVal.push_back({{0, 4}});
+        retVal.push_back({{1, 2}});
+        retVal.push_back({{1, 3}});
+        retVal.push_back({{1, 4}});
+        retVal.push_back({{2, 3}});
+        retVal.push_back({{2, 4}});
+        retVal.push_back({{3, 4}});
+        retVal.push_back({{0, 1, 2}});
+        retVal.push_back({{0, 1, 3}});
+        retVal.push_back({{0, 1, 4}});
+        retVal.push_back({{0, 2, 3}});
+        retVal.push_back({{0, 2, 4}});
+        retVal.push_back({{1, 2, 3}});
+        retVal.push_back({{1, 2, 4}});
+        retVal.push_back({{2, 3, 4}});
+        retVal.push_back({{0, 1, 2, 3}});
+        retVal.push_back({{0, 1, 2, 4}});
+        retVal.push_back({{0, 1, 3, 4}});
+        retVal.push_back({{0, 2, 3, 4}});
+        retVal.push_back({{1, 2, 3, 4}});
         retVal.push_back({{0, 1, 2, 3, 4}});
-        retVal.push_back({{0}, {1}, {2}, {3}, {4}});
-
-        retVal.push_back({{0, 1}, {2, 3, 4}});
-        retVal.push_back({{0, 2}, {1, 3, 4}});
-        retVal.push_back({{0, 3}, {1, 2, 4}});
-        retVal.push_back({{0, 4}, {1, 2, 3}});
-        retVal.push_back({{1, 2}, {0, 3, 4}});
-        retVal.push_back({{1, 3}, {0, 2, 4}});
-        retVal.push_back({{1, 4}, {0, 2, 3}});
-        retVal.push_back({{2, 3}, {0, 1, 4}});
-        retVal.push_back({{2, 4}, {0, 1, 3}});
-        retVal.push_back({{3, 4}, {0, 1, 2}});
-
-        retVal.push_back({{0, 1}, {2, 3}, {4}});
-        retVal.push_back({{0, 2}, {1, 3}, {4}});
-        retVal.push_back({{0, 3}, {1, 2}, {4}});
-        retVal.push_back({{0, 4}, {1, 2}, {3}});
-        retVal.push_back({{1, 2}, {0, 3}, {4}});
-        retVal.push_back({{1, 3}, {0, 2}, {4}});
-        retVal.push_back({{1, 4}, {0, 2}, {3}});
-        retVal.push_back({{2, 3}, {0, 1}, {4}});
-        retVal.push_back({{2, 4}, {0, 1}, {3}});
-        retVal.push_back({{3, 4}, {0, 1}, {2}});
-
-        retVal.push_back({{0, 1}, {2}, {3}, {4}});
-        retVal.push_back({{0, 2}, {1}, {3}, {4}});
-        retVal.push_back({{0, 3}, {1}, {2}, {4}});
-        retVal.push_back({{0, 4}, {1}, {2}, {3}});
-        retVal.push_back({{1, 2}, {0}, {3}, {4}});
-        retVal.push_back({{1, 3}, {0}, {2}, {4}});
-        retVal.push_back({{1, 4}, {0}, {2}, {3}});
-        retVal.push_back({{2, 3}, {0}, {1}, {4}});
-        retVal.push_back({{2, 4}, {0}, {1}, {3}});
-        retVal.push_back({{3, 4}, {0}, {1}, {2}});
-
-        retVal.push_back({{0, 1, 2, 3}, {4}});
-        retVal.push_back({{0, 1, 2, 4}, {3}});
-        retVal.push_back({{0, 1, 3, 4}, {2}});
-        retVal.push_back({{0, 2, 3, 4}, {1}});
-        retVal.push_back({{1, 2, 3, 4}, {0}});
     }
 
     for (vector<vector<int>> comb : retVal) {
