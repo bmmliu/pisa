@@ -112,69 +112,46 @@ void load_exist_terms(unordered_set<string> &cached_terms, string cache_filename
     }
 }
 
-vector<vector<string>> getAllPossibleSlicing(vector<uint32_t> &terms) {
+vector<vector<string>> getAllPossibleSlicing(vector<uint32_t> &terms, int termConsidered) {
     sort(terms.begin(), terms.end());
     vector<vector<vector<int>>> retVal;
     vector<vector<string>> retVal_string;
-    int numOfTerm = terms.size();
-    if (numOfTerm == 2) {
-        retVal.push_back({{0}});
-        retVal.push_back({{1}});
-        retVal.push_back({{0, 1}});
-    } else if (numOfTerm == 3) {
-        retVal.push_back({{0}});
-        retVal.push_back({{1}});
-        retVal.push_back({{2}});
-        retVal.push_back({{0, 1}});
-        retVal.push_back({{0, 2}});
-        retVal.push_back({{1, 2}});
-        retVal.push_back({{0, 1, 2}});
-    } else if (numOfTerm == 4) {
-        retVal.push_back({{0}});
-        retVal.push_back({{1}});
-        retVal.push_back({{2}});
-        retVal.push_back({{3}});
-        retVal.push_back({{0, 1}});
-        retVal.push_back({{0, 2}});
-        retVal.push_back({{0, 3}});
-        retVal.push_back({{1, 2}});
-        retVal.push_back({{1, 3}});
-        retVal.push_back({{2, 3}});
-        retVal.push_back({{0, 1, 2}});
-        retVal.push_back({{0, 1, 3}});
-        retVal.push_back({{0, 2, 3}});
-        retVal.push_back({{0, 1, 2, 3}});
-    } else if (numOfTerm == 5) {
-        retVal.push_back({{0}});
-        retVal.push_back({{1}});
-        retVal.push_back({{2}});
-        retVal.push_back({{3}});
-        retVal.push_back({{4}});
-        retVal.push_back({{0, 1}});
-        retVal.push_back({{0, 2}});
-        retVal.push_back({{0, 3}});
-        retVal.push_back({{0, 4}});
-        retVal.push_back({{1, 2}});
-        retVal.push_back({{1, 3}});
-        retVal.push_back({{1, 4}});
-        retVal.push_back({{2, 3}});
-        retVal.push_back({{2, 4}});
-        retVal.push_back({{3, 4}});
-        retVal.push_back({{0, 1, 2}});
-        retVal.push_back({{0, 1, 3}});
-        retVal.push_back({{0, 1, 4}});
-        retVal.push_back({{0, 2, 3}});
-        retVal.push_back({{0, 2, 4}});
-        retVal.push_back({{1, 2, 3}});
-        retVal.push_back({{1, 2, 4}});
-        retVal.push_back({{2, 3, 4}});
-        retVal.push_back({{0, 1, 2, 3}});
-        retVal.push_back({{0, 1, 2, 4}});
-        retVal.push_back({{0, 1, 3, 4}});
-        retVal.push_back({{0, 2, 3, 4}});
-        retVal.push_back({{1, 2, 3, 4}});
-        retVal.push_back({{0, 1, 2, 3, 4}});
+
+    if (terms.size() >= 1 && termConsidered >= 1) {
+        for (int i = 0; i < terms.size(); ++i) {
+            retVal.push_back({{i}});
+        }
     }
+    if (terms.size() >= 2 && termConsidered >= 2) {
+        for (int i = 0; i < terms.size(); ++i) {
+            for (int j = i + 1; j < terms.size(); ++j) {
+                retVal.push_back({{i, j}});
+            }
+        }
+    }
+
+    if (terms.size() >= 3 && termConsidered >= 3) {
+        for (int i = 0; i < terms.size(); ++i) {
+            for (int j = i + 1; j < terms.size(); ++j) {
+                for (int s = j + 1; s < terms.size(); ++s) {
+                    retVal.push_back({{i, j, s}});
+                }
+            }
+        }
+    }
+
+    if (terms.size() >= 4 && termConsidered >= 4) {
+        for (int i = 0; i < terms.size(); ++i) {
+            for (int j = i + 1; j < terms.size(); ++j) {
+                for (int s = j + 1; s < terms.size(); ++s) {
+                    for (int t = s + 1; t < terms.size(); ++t) {
+                        retVal.push_back({{i, j, s, t}});
+                    }
+                }
+            }
+        }
+    }
+
 
     for (vector<vector<int>> comb : retVal) {
         vector<string> combStr;
@@ -202,11 +179,11 @@ vector<uint32_t> getTermsFromString (string termStr) {
     return terms;
 }
 
-float getTopKFromMap (unordered_map<string, unordered_map<uint64_t, float>> &t_did_map, int k, int numOfTerm, vector<uint32_t> &terms) {
+float getTopKFromMap (unordered_map<string, unordered_map<uint64_t, float>> &t_did_map, int k, int termConsidered, vector<uint32_t> &terms) {
     unordered_map<uint64_t, float> TopK;
     vector<pair<uint64_t, float>> TopKVec;
 
-    vector<vector<string>> allPossibleSlicing = getAllPossibleSlicing(terms);
+    vector<vector<string>> allPossibleSlicing = getAllPossibleSlicing(terms, termConsidered);
 
     for (vector<string> slicing : allPossibleSlicing) {
         unordered_map<uint64_t, float> DidScore;
@@ -310,16 +287,22 @@ void kt_thresholds(
     }
 
     string cache_filename = argStr[0];
-    int numberOfTerms = atoi(argStr[1].c_str());
+    int termConsidered = atoi(argStr[1].c_str());
     int d = k * atoi(argStr[2].c_str());
 
     unordered_set<string> cached_terms;
 
-    load_exist_terms(cached_terms, "/ssd2/home/bmmliu/logBaseFreq/1_term_freq_2.txt");
-    load_exist_terms(cached_terms, "/ssd2/home/bmmliu/logBaseFreq/2_term_freq_2.txt");
-    //load_exist_terms(cached_terms, "/ssd2/home/bmmliu/logBaseFreq/3_term_freq_2.txt");
-    //load_exist_terms(cached_terms, "/ssd2/home/bmmliu/logBaseFreq/4_term_freq_2.txt");
-    //load_exist_terms(cached_terms, "/home/bmmliu/data/logBaseFreq/4_term_freq_10.txt");
+    load_exist_terms(cached_terms, "/home/jg6226/data/Hit_Ratio_Project/Lexicon/CW09B.fwd.terms");
+
+    if (termConsidered >= 2) {
+        load_exist_terms(cached_terms, "/ssd2/home/bmmliu/logBaseFreq/2_term_freq_1.txt");
+    }
+    if (termConsidered >= 3) {
+        load_exist_terms(cached_terms, "/ssd2/home/bmmliu/logBaseFreq/3_term_freq_1.txt");
+    }
+    if (termConsidered >= 4) {
+        load_exist_terms(cached_terms, "/ssd2/home/bmmliu/logBaseFreq/4_term_freq_1.txt");
+    }
 
     vector<float> realThreshold;
 
@@ -330,14 +313,8 @@ void kt_thresholds(
     auto t_start = std::chrono::high_resolution_clock::now();
     auto t_end = std::chrono::high_resolution_clock::now();
 
+    int count = 0;
     for (auto const& query: queries) {
-        if(numberOfTerms > query.terms.size() || ifDupTerm(query.terms)) {
-            realThreshold.push_back(-1.0);
-            singleThreshold.push_back(-1.0);
-            singleEstimatedK.push_back(-1);
-            singleQueryTimeVec.push_back(-1.0);
-            continue;
-        }
 
         auto terms = query.terms;
 
@@ -367,9 +344,9 @@ void kt_thresholds(
         }
 
         topk_queue topk(d);
-        wand_query wand_q(topk);
+        ranked_and_query wand_q(topk);
 
-        vector<vector<string>> allPossibleSlicing = getAllPossibleSlicing(terms);
+        vector<vector<string>> allPossibleSlicing = getAllPossibleSlicing(terms, termConsidered);
         unordered_map<string, unordered_map<uint64_t, float>> t_did_map;
 
         for (vector<string> slicing : allPossibleSlicing) {
@@ -392,7 +369,7 @@ void kt_thresholds(
         }
 
         t_start = std::chrono::high_resolution_clock::now();
-        curEstimate = getTopKFromMap(t_did_map, k, numberOfTerms, terms);
+        curEstimate = getTopKFromMap(t_did_map, k, termConsidered, terms);
         t_end = std::chrono::high_resolution_clock::now();
         singleThreshold.push_back(curEstimate);
         singleQueryTimeVec.push_back(std::chrono::duration<double, std::milli>(t_end-t_start).count());
@@ -410,6 +387,11 @@ void kt_thresholds(
                 singleEstimatedK.push_back(i + 2);
                 break;
             }
+        }
+
+        count++;
+        if (count % 10 == 0) {
+            clog << count << "queries consider terms = " << termConsidered << " k = " << k << " processed -- combine did" << endl;
         }
     }
 

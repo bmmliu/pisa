@@ -76,7 +76,7 @@ vector<Query> make_exist_term_queries(std::string exist_term_file) {
     return q;
 }
 
-bool cmpDidTPair(pair<uint64_t, float>& a, pair<uint64_t, float>& b){
+bool cmpDidTPair(pair<uint64_t, short>& a, pair<uint64_t, short>& b){
     return a.second > b.second;
 }
 
@@ -92,114 +92,54 @@ bool ifDupTerm(vector<uint32_t> terms) {
     return false;
 }
 
-void load_exist_terms(unordered_set<string> &cached_terms, string cache_filename) {
-    vector<Query> exist_terms_queries = make_exist_term_queries(cache_filename);
-    for (auto const& query: exist_terms_queries) {
-        // Get sorted query and convert it to string
 
-        if (query.terms.size() == 0) {
-            continue;
+vector<string> getAllPossibleComb(vector<uint32_t> &terms, int termConsidered) {
+    vector<vector<int>> retVal;
+    vector<string> retVal_string;
+
+    if (terms.size() >= 1 && termConsidered >= 1) {
+        for (int i = 0; i < terms.size(); ++i) {
+            retVal.push_back({i});
         }
-        vector<uint32_t> sorted_terms = query.terms;
-        string sorted_terms_string = "";
-
-        sort(sorted_terms.begin(), sorted_terms.end());
-        for (uint32_t term_id: sorted_terms) {
-            sorted_terms_string += to_string(term_id) + "-";
-        }
-        sorted_terms_string.pop_back();
-        cached_terms.insert(sorted_terms_string);
     }
-}
-
-vector<vector<string>> getAllPossibleSlicing(vector<uint32_t> &terms) {
-    sort(terms.begin(), terms.end());
-    vector<vector<vector<int>>> retVal;
-    vector<vector<string>> retVal_string;
-    int numOfTerm = terms.size();
-    if (numOfTerm == 2) {
-        retVal.push_back({{0, 1}});
-        retVal.push_back({{0}, {1}});
-    } else if (numOfTerm == 3) {
-        retVal.push_back({{0, 1, 2}});
-        retVal.push_back({{0}, {1}, {2}});
-        retVal.push_back({{0, 1}, {2}});
-        retVal.push_back({{0, 2}, {1}});
-        retVal.push_back({{1, 2}, {0}});
-    } else if (numOfTerm == 4) {
-        retVal.push_back({{0, 1, 2, 3}});
-        retVal.push_back({{0}, {1}, {2}, {3}});
-
-        retVal.push_back({{0, 1}, {2, 3}});
-        retVal.push_back({{0, 2}, {1, 3}});
-        retVal.push_back({{1, 2}, {0, 3}});
-
-        retVal.push_back({{0, 1}, {2}, {3}});
-        retVal.push_back({{0, 2}, {1}, {3}});
-        retVal.push_back({{0, 3}, {1}, {2}});
-        retVal.push_back({{1, 2}, {0}, {3}});
-        retVal.push_back({{1, 3}, {0}, {2}});
-        retVal.push_back({{2, 3}, {0}, {1}});
-
-        retVal.push_back({{0, 1, 2}, {3}});
-        retVal.push_back({{0, 1, 3}, {2}});
-        retVal.push_back({{0, 2, 3}, {1}});
-        retVal.push_back({{1, 2, 3}, {0}});
-    } else if (numOfTerm == 5) {
-        retVal.push_back({{0, 1, 2, 3, 4}});
-        retVal.push_back({{0}, {1}, {2}, {3}, {4}});
-
-        retVal.push_back({{0, 1}, {2, 3, 4}});
-        retVal.push_back({{0, 2}, {1, 3, 4}});
-        retVal.push_back({{0, 3}, {1, 2, 4}});
-        retVal.push_back({{0, 4}, {1, 2, 3}});
-        retVal.push_back({{1, 2}, {0, 3, 4}});
-        retVal.push_back({{1, 3}, {0, 2, 4}});
-        retVal.push_back({{1, 4}, {0, 2, 3}});
-        retVal.push_back({{2, 3}, {0, 1, 4}});
-        retVal.push_back({{2, 4}, {0, 1, 3}});
-        retVal.push_back({{3, 4}, {0, 1, 2}});
-
-        retVal.push_back({{0, 1}, {2, 3}, {4}});
-        retVal.push_back({{0, 2}, {1, 3}, {4}});
-        retVal.push_back({{0, 3}, {1, 2}, {4}});
-        retVal.push_back({{0, 4}, {1, 2}, {3}});
-        retVal.push_back({{1, 2}, {0, 3}, {4}});
-        retVal.push_back({{1, 3}, {0, 2}, {4}});
-        retVal.push_back({{1, 4}, {0, 2}, {3}});
-        retVal.push_back({{2, 3}, {0, 1}, {4}});
-        retVal.push_back({{2, 4}, {0, 1}, {3}});
-        retVal.push_back({{3, 4}, {0, 1}, {2}});
-
-        retVal.push_back({{0, 1}, {2}, {3}, {4}});
-        retVal.push_back({{0, 2}, {1}, {3}, {4}});
-        retVal.push_back({{0, 3}, {1}, {2}, {4}});
-        retVal.push_back({{0, 4}, {1}, {2}, {3}});
-        retVal.push_back({{1, 2}, {0}, {3}, {4}});
-        retVal.push_back({{1, 3}, {0}, {2}, {4}});
-        retVal.push_back({{1, 4}, {0}, {2}, {3}});
-        retVal.push_back({{2, 3}, {0}, {1}, {4}});
-        retVal.push_back({{2, 4}, {0}, {1}, {3}});
-        retVal.push_back({{3, 4}, {0}, {1}, {2}});
-
-        retVal.push_back({{0, 1, 2, 3}, {4}});
-        retVal.push_back({{0, 1, 2, 4}, {3}});
-        retVal.push_back({{0, 1, 3, 4}, {2}});
-        retVal.push_back({{0, 2, 3, 4}, {1}});
-        retVal.push_back({{1, 2, 3, 4}, {0}});
-    }
-
-    for (vector<vector<int>> comb : retVal) {
-        vector<string> combStr;
-        for (vector<int> subComb : comb) {
-            string subCombStr = "";
-            for (int singleTerm : subComb) {
-                subCombStr += to_string(terms[singleTerm]) + "-";
+    if (terms.size() >= 2 && termConsidered >= 2) {
+        for (int i = 0; i < terms.size(); ++i) {
+            for (int j = i + 1; j < terms.size(); ++j) {
+                retVal.push_back({i, j});
             }
-            subCombStr.pop_back();
-            combStr.push_back(subCombStr);
         }
-        retVal_string.push_back(combStr);
+    }
+
+    if (terms.size() >= 3 && termConsidered >= 3) {
+        for (int i = 0; i < terms.size(); ++i) {
+            for (int j = i + 1; j < terms.size(); ++j) {
+                for (int s = j + 1; s < terms.size(); ++s) {
+                    retVal.push_back({i, j, s});
+                }
+            }
+        }
+    }
+
+    if (terms.size() >= 4 && termConsidered >= 4) {
+        for (int i = 0; i < terms.size(); ++i) {
+            for (int j = i + 1; j < terms.size(); ++j) {
+                for (int s = j + 1; s < terms.size(); ++s) {
+                    for (int t = s + 1; t < terms.size(); ++t) {
+                        retVal.push_back({i, j, s, t});
+                    }
+                }
+            }
+        }
+    }
+
+
+    for (vector<int> comb : retVal) {
+        string CombStr = "";
+        for (int singleTerm : comb) {
+            CombStr += to_string(terms[singleTerm]) + "-";
+        }
+        CombStr.pop_back();
+        retVal_string.push_back(CombStr);
     }
 
     return retVal_string;
@@ -215,40 +155,70 @@ vector<uint32_t> getTermsFromString (string termStr) {
     return terms;
 }
 
-float getTopKFromMap (unordered_map<string, unordered_map<uint64_t, float>> &t_did_map, int k, int termConsidered, vector<uint32_t> &terms) {
-    unordered_map<uint64_t, float> TopK;
-    vector<pair<uint64_t, float>> TopKVec;
+string term_to_string (vector<uint32_t> &terms) {
+    string terms_string = "";
+    for (uint32_t term_id: terms) {
+        terms_string += to_string(term_id) + "-";
+    }
+    terms_string.pop_back();
 
-    vector<vector<string>> allPossibleSlicing = getAllPossibleSlicing(terms);
+    return terms_string;
+}
 
-    for (vector<string> slicing : allPossibleSlicing) {
-        unordered_map<uint64_t, float> DidScore;
-        for (string comb : slicing) {
-            if (t_did_map.find(comb) != t_did_map.end()) {
-                for (auto item : t_did_map[comb]) {
-                    DidScore[item.first] += item.second;
-                }
-            }
+void load_lexicon(unordered_map<string, pair<int64_t, int64_t>> &lex_map, string &gram_path, string &lexicon_path, int gram_size) {
+    vector<Query> exist_terms_queries = make_exist_term_queries(gram_path);
+    ifstream in_lex(lexicon_path);
+
+    int count = 0;
+
+    for (auto const& query: exist_terms_queries) {
+
+        vector<uint32_t> unsorted_terms = query.terms;
+        if (gram_size != unsorted_terms.size()) {
+            //clog << "loading non stemmed query" << endl;
+            string lexline;
+            std::getline(in_lex, lexline);
+            continue;
         }
+        string term_id_string = term_to_string(unsorted_terms);
 
-        for (auto item : DidScore) {
-            if (TopK.find(item.first) != TopK.end()) {
-                TopK[item.first] = max(item.second, TopK[item.first]);
-            } else {
-                TopK[item.first] = item.second;
-            }
+        string lexline;
+        vector<string> lex_pair;
+
+        std::getline(in_lex, lexline);
+        boost::split(lex_pair, lexline, boost::is_any_of(" "), boost::token_compress_on);
+        lex_map[term_id_string] = pair<int64_t, int64_t>(std::stoll(lex_pair[0], nullptr, 0), std::stoll(lex_pair[1], nullptr, 0));
+
+        count++;
+        if (count % 1000000 == 0) {
+            clog << count << " " << gram_size << " term combine loaded" << endl;
         }
     }
 
-    for (auto item : TopK) {
-        TopKVec.push_back({item.first, item.second});
+    in_lex.close();
+}
+
+float getTopKFromMap (unordered_map<uint64_t, unordered_map<uint32_t, short>> did_t_map, int k, int termConsidered, vector<uint32_t> &terms) {
+    vector<pair<uint64_t, short>> TopKVec;
+
+    for (auto did_t_score : did_t_map) {
+        uint64_t did = did_t_score.first;
+        short did_score = 0;
+
+        for (auto t_score : did_t_score.second) {
+            did_score += t_score.second;
+        }
+
+
+        TopKVec.push_back({did, did_score});
     }
 
     sort(TopKVec.begin(), TopKVec.end(), cmpDidTPair);
+
     if (TopKVec.size() < k) {
         return -2.0;
     }
-    return TopKVec[k - 1].second;
+    return (double) TopKVec[k - 1].second;
 }
 
 template <typename IndexType, typename WandType>
@@ -326,19 +296,35 @@ void kt_thresholds(
     int termConsidered = atoi(argStr[1].c_str());
     int d = k * atoi(argStr[2].c_str());
 
-    unordered_set<string> cached_terms;
+    unordered_map<string, pair<int64_t, int64_t>> lex_map;
 
-    load_exist_terms(cached_terms, "/home/jg6226/data/Hit_Ratio_Project/Lexicon/CW09B.fwd.terms");
+    string single_gram_path = "/home/jg6226/data/Hit_Ratio_Project/Lexicon/CW09B.fwd.terms";
+    string single_prefix_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/single_with_termscore/single_prefix";
+    string single_lexicon_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/single_with_termscore/single_lexicon.txt";
 
+    string duplet_gram_path = "/home/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/Prefix_Grams/duplet_cleaned.txt";
+    string duplet_prefix_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/duplet_with_termscore/duplet_prefix";
+    string duplet_lexicon_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/duplet_with_termscore/duplet_lexicon.txt";
+
+    string triplet_gram_path = "/home/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/Prefix_Grams/triplet_cleaned.txt";
+    string triplet_prefix_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/triplet_with_termscore/triplet_prefix";
+    string triplet_lexicon_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/triplet_with_termscore/triplet_lexicon.txt";
+
+    string quadruplet_gram_path = "/home/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/Prefix_Grams/quadruplet_cleaned.txt";
+    string quadruplet_prefix_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/triplet_with_termscore/quadruplet_prefix";
+    string quadruplet_lexicon_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/triplet_with_termscore/quadruplet_lexicon.txt";
+
+    load_lexicon(lex_map, single_gram_path, single_lexicon_path, 1);
     if (termConsidered >= 2) {
-        load_exist_terms(cached_terms, "/ssd2/home/bmmliu/logBaseFreq/2_term_freq_1.txt");
+        load_lexicon(lex_map, duplet_gram_path, duplet_lexicon_path, 2);
     }
     if (termConsidered >= 3) {
-        load_exist_terms(cached_terms, "/ssd2/home/bmmliu/logBaseFreq/3_term_freq_1.txt");
+        load_lexicon(lex_map, triplet_gram_path, triplet_lexicon_path, 3);
     }
     if (termConsidered >= 4) {
-        load_exist_terms(cached_terms, "/ssd2/home/bmmliu/logBaseFreq/4_term_freq_1.txt");
+        load_lexicon(lex_map, quadruplet_gram_path, quadruplet_lexicon_path, 4);
     }
+
 
     vector<float> realThreshold;
 
@@ -353,14 +339,6 @@ void kt_thresholds(
     for (auto const& query: queries) {
 
         auto terms = query.terms;
-
-        if(terms.size() > 5) {
-            realThreshold.push_back(-1.0);
-            singleThreshold.push_back(-1.0);
-            singleEstimatedK.push_back(-1);
-            singleQueryTimeVec.push_back(-1.0);
-            continue;
-        }
 
         topk_queue topk_old(k * 1000);
         wand_query wand_q_old(topk_old);
@@ -390,30 +368,54 @@ void kt_thresholds(
         topk_queue topk(d);
         wand_query wand_q(topk);
 
-        vector<vector<string>> allPossibleSlicing = getAllPossibleSlicing(terms);
-        unordered_map<string, unordered_map<uint64_t, float>> t_did_map;
+        vector<string> allPossibleComb = getAllPossibleComb(terms, termConsidered);
 
-        for (vector<string> slicing : allPossibleSlicing) {
-            for (string comb : slicing) {
-                if (cached_terms.find(comb) != cached_terms.end() && t_did_map.find(comb) == t_did_map.end()) {
-                    vector<uint32_t> terms = getTermsFromString(comb);
-                    Query subQuery;
-                    subQuery.terms = terms;
-                    auto cursor = make_max_scored_cursors(index, wdata, *scorer, subQuery);
-                    wand_q(cursor, index.num_docs());
-                    topk.finalize();
-                    auto results = topk.topk();
-                    topk.clear();
+        unordered_map<uint64_t, unordered_map<uint32_t, short>> did_t_map;
 
-                    for(std::pair<float, uint64_t> result: results) {
-                        t_did_map[comb][result.second] = result.first;
-                    }
+        for (string comb : allPossibleComb) {
+            if (lex_map.find(comb) != lex_map.end()) {
+                vector<uint32_t> sub_terms = getTermsFromString(comb);
+
+                int size_of_gram = sub_terms.size();
+                string prefix_file_name = "";
+                if (size_of_gram == 1) {
+                    prefix_file_name = single_prefix_path;
+                } else if (size_of_gram == 2) {
+                    prefix_file_name = duplet_prefix_path;
+                } else if (size_of_gram == 3) {
+                    prefix_file_name = triplet_prefix_path;
+                } else if (size_of_gram == 4) {
+                    prefix_file_name = quadruplet_lexicon_path;
                 }
+
+                ifstream prefix_binary;
+                prefix_binary.open(prefix_file_name, std::ios::in | std::ios::binary);
+
+                int64_t start_pos = lex_map[comb].first;
+                int64_t end_pos = lex_map[comb].second;
+                int64_t cur_pos = start_pos + 4;
+                int d_count = 0;
+                while (cur_pos < end_pos && d_count < d) {
+                    prefix_binary.seekg(cur_pos);
+
+                    int did;
+
+                    prefix_binary.read(reinterpret_cast<char*>(&did), 4);
+                    for (int i = 0; i < size_of_gram; i++) {
+                        unsigned char score;
+                        prefix_binary.read(reinterpret_cast<char*>(&score), 1);
+                        did_t_map[did][sub_terms[i]] = (short)score;
+                    }
+
+                    cur_pos += 4 + size_of_gram;
+                    d_count++;
+                }
+                prefix_binary.close();
             }
         }
 
         t_start = std::chrono::high_resolution_clock::now();
-        curEstimate = getTopKFromMap(t_did_map, k, termConsidered, terms);
+        curEstimate = getTopKFromMap(did_t_map, k, termConsidered, terms);
         t_end = std::chrono::high_resolution_clock::now();
         singleThreshold.push_back(curEstimate);
         singleQueryTimeVec.push_back(std::chrono::duration<double, std::milli>(t_end-t_start).count());
