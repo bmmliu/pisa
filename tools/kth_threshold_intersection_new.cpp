@@ -165,8 +165,17 @@ string term_to_string (vector<uint32_t> &terms) {
     return terms_string;
 }
 
-void load_lexicon(unordered_map<string, pair<int64_t, int64_t>> &lex_map, string &gram_path, string &lexicon_path, int gram_size) {
+void load_lexicon(unordered_map<string, pair<int64_t, int64_t>> &lex_map, string &freq_path, string &gram_path, string &lexicon_path, int gram_size) {
     vector<Query> exist_terms_queries = make_exist_term_queries(gram_path);
+    vector<Query> freq_terms_queries = make_exist_term_queries(freq_path);
+    unordered_set<string> freq_terms_string_set;
+
+    for (auto const& query: freq_terms_queries) {
+        vector<uint32_t> freq_query_terms = query.terms;
+        string freq_term_id_string = term_to_string(freq_query_terms);
+        freq_terms_string_set.insert(freq_term_id_string);
+    }
+
     ifstream in_lex(lexicon_path);
 
     int count = 0;
@@ -174,13 +183,14 @@ void load_lexicon(unordered_map<string, pair<int64_t, int64_t>> &lex_map, string
     for (auto const& query: exist_terms_queries) {
 
         vector<uint32_t> unsorted_terms = query.terms;
-        if (gram_size != unsorted_terms.size()) {
+        string term_id_string = term_to_string(unsorted_terms);
+
+        if (gram_size != unsorted_terms.size() || freq_terms_string_set.find(term_id_string) == freq_terms_string_set.end()) {
             //clog << "loading non stemmed query" << endl;
             string lexline;
             std::getline(in_lex, lexline);
             continue;
         }
-        string term_id_string = term_to_string(unsorted_terms);
 
         string lexline;
         vector<string> lex_pair;
@@ -198,7 +208,7 @@ void load_lexicon(unordered_map<string, pair<int64_t, int64_t>> &lex_map, string
     in_lex.close();
 }
 
-float getTopKFromMap (unordered_map<uint64_t, unordered_map<uint32_t, short>> did_t_map, int k, int termConsidered, vector<uint32_t> &terms) {
+float getTopKFromMap (unordered_map<uint64_t, unordered_map<uint32_t, short>> &did_t_map, int k, int termConsidered, vector<uint32_t> &terms) {
     vector<pair<uint64_t, short>> TopKVec;
 
     for (auto did_t_score : did_t_map) {
@@ -298,31 +308,35 @@ void kt_thresholds(
 
     unordered_map<string, pair<int64_t, int64_t>> lex_map;
 
+    string single_freq_path = "/home/jg6226/data/Hit_Ratio_Project/Lexicon/CW09B.fwd.terms";
     string single_gram_path = "/home/jg6226/data/Hit_Ratio_Project/Lexicon/CW09B.fwd.terms";
     string single_prefix_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/single_with_termscore/single_prefix";
     string single_lexicon_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/single_with_termscore/single_lexicon.txt";
 
+    string duplet_freq_path = "/ssd2/home/bmmliu/logBaseFreq/2_term_freq_2.txt";
     string duplet_gram_path = "/home/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/Prefix_Grams/duplet_cleaned.txt";
     string duplet_prefix_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/duplet_with_termscore/duplet_prefix";
     string duplet_lexicon_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/duplet_with_termscore/duplet_lexicon.txt";
 
+    string triplet_freq_path = "/ssd2/home/bmmliu/logBaseFreq/3_term_freq_3.txt";
     string triplet_gram_path = "/home/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/Prefix_Grams/triplet_cleaned.txt";
     string triplet_prefix_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/triplet_with_termscore/triplet_prefix";
     string triplet_lexicon_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/triplet_with_termscore/triplet_lexicon.txt";
 
+    string quadruplet_freq_path = "/ssd2/home/bmmliu/logBaseFreq/4_term_freq_3.txt";
     string quadruplet_gram_path = "/home/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/Prefix_Grams/quadruplet_cleaned.txt";
-    string quadruplet_prefix_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/triplet_with_termscore/quadruplet_prefix";
-    string quadruplet_lexicon_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/triplet_with_termscore/quadruplet_lexicon.txt";
+    string quadruplet_prefix_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/quadruplet_with_termscore/quadruplet_prefix";
+    string quadruplet_lexicon_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/quadruplet_with_termscore/quadruplet_lexicon.txt";
 
-    load_lexicon(lex_map, single_gram_path, single_lexicon_path, 1);
+    load_lexicon(lex_map, single_freq_path, single_gram_path, single_lexicon_path, 1);
     if (termConsidered >= 2) {
-        load_lexicon(lex_map, duplet_gram_path, duplet_lexicon_path, 2);
+        load_lexicon(lex_map, duplet_freq_path, duplet_gram_path, duplet_lexicon_path, 2);
     }
     if (termConsidered >= 3) {
-        load_lexicon(lex_map, triplet_gram_path, triplet_lexicon_path, 3);
+        load_lexicon(lex_map, triplet_freq_path, triplet_gram_path, triplet_lexicon_path, 3);
     }
     if (termConsidered >= 4) {
-        load_lexicon(lex_map, quadruplet_gram_path, quadruplet_lexicon_path, 4);
+        load_lexicon(lex_map, quadruplet_freq_path, quadruplet_gram_path, quadruplet_lexicon_path, 4);
     }
 
 
@@ -385,7 +399,7 @@ void kt_thresholds(
                 } else if (size_of_gram == 3) {
                     prefix_file_name = triplet_prefix_path;
                 } else if (size_of_gram == 4) {
-                    prefix_file_name = quadruplet_lexicon_path;
+                    prefix_file_name = quadruplet_prefix_path;
                 }
 
                 ifstream prefix_binary;

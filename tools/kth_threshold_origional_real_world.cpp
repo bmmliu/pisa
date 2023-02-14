@@ -197,10 +197,10 @@ void kt_thresholds(
         load_exist_terms(cached_terms, "/ssd2/home/bmmliu/logBaseFreq/2_term_freq_1.txt");
     }
     if (termConsidered >= 3) {
-        load_exist_terms(cached_terms, "/ssd2/home/bmmliu/logBaseFreq/3_term_freq_2.txt");
+        load_exist_terms(cached_terms, "/ssd2/home/bmmliu/logBaseFreq/3_term_freq_1.txt");
     }
     if (termConsidered >= 4) {
-        load_exist_terms(cached_terms, "/ssd2/home/bmmliu/logBaseFreq/4_term_freq_2.txt");
+        load_exist_terms(cached_terms, "/ssd2/home/bmmliu/logBaseFreq/4_term_freq_1.txt");
     }
     //load_exist_terms(cached_terms, "/ssd2/home/bmmliu/logBaseFreq/1_term_freq_5.txt");
     //load_exist_terms(cached_terms, "/ssd2/home/bmmliu/logBaseFreq/2_term_freq_5.txt");
