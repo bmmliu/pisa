@@ -373,9 +373,7 @@ void kt_thresholds(
             continue;
         }
 
-        topk_queue topk(d);
-        wand_query wand_q(topk);
-
+        t_start = std::chrono::high_resolution_clock::now();
         vector<string> allPossibleComb = getAllPossibleComb(terms, termConsidered);
 
         unordered_map<uint64_t, short> did_s_map;
@@ -428,7 +426,6 @@ void kt_thresholds(
             }
         }
 
-        t_start = std::chrono::high_resolution_clock::now();
         curEstimate = getTopKFromMap(did_s_map, k, termConsidered, terms);
         t_end = std::chrono::high_resolution_clock::now();
         singleThreshold.push_back(curEstimate);

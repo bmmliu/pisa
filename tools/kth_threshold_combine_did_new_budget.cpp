@@ -5,6 +5,8 @@
 #include <chrono>
 #include <fstream>
 #include <sstream>
+#include <sparsehash/dense_hash_set>
+#include <sparsehash/dense_hash_map>
 
 #include "boost/algorithm/string/classification.hpp"
 #include "boost/algorithm/string/split.hpp"
@@ -33,6 +35,72 @@
 
 using namespace pisa;
 using term_id_type = uint32_t;
+//using ext::hash;
+using google::dense_hash_set;
+using google::dense_hash_map;
+
+string single_freq_path = "/home/jg6226/data/Hit_Ratio_Project/Lexicon/CW09B.fwd.terms";
+string single_gram_path = "/home/jg6226/data/Hit_Ratio_Project/Lexicon/CW09B.fwd.terms";
+string single_prefix_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/single_with_termscore/single_prefix";
+string single_lexicon_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/single_with_termscore/single_lexicon.txt";
+
+string duplet_freq_path = "/ssd2/home/bmmliu/logBaseFreq/2_term_freq_2.txt";
+string duplet_gram_path = "/home/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/Prefix_Grams/duplet_cleaned.txt";
+string duplet_prefix_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/duplet_with_termscore/duplet_prefix";
+string duplet_lexicon_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/duplet_with_termscore/duplet_lexicon.txt";
+
+string triplet_freq_path = "/ssd2/home/bmmliu/logBaseFreq/3_term_freq_2.txt";
+string triplet_gram_path = "/home/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/Prefix_Grams/triplet_cleaned.txt";
+string triplet_prefix_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/triplet_with_termscore/triplet_prefix";
+string triplet_lexicon_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/triplet_with_termscore/triplet_lexicon.txt";
+
+string quadruplet_freq_path = "/ssd2/home/bmmliu/logBaseFreq/4_term_freq_2.txt";
+string quadruplet_gram_path = "/home/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/Prefix_Grams/quadruplet_cleaned.txt";
+string quadruplet_prefix_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/quadruplet_with_termscore/quadruplet_prefix";
+string quadruplet_lexicon_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/quadruplet_with_termscore/quadruplet_lexicon.txt";
+
+ifstream single_prefix_binary;
+
+ifstream duplet_prefix_binary;
+
+ifstream triplet_prefix_binary;
+
+ifstream quadruplet_prefix_binary;
+
+struct Posting
+{
+    uint64_t did;
+    short score;
+    string term_string;
+    int rank;
+
+    Posting(uint64_t did, short score, string term_string, int rank)
+        : did(did), score(score), term_string(term_string), rank(rank) {}
+};
+
+struct ComparePostingScore {
+    bool operator()(Posting const& p1, Posting const& p2)
+    {
+        // return "true" if "p1" is ordered
+        // before "p2", for example:
+        return p1.score < p2.score;
+    }
+};
+
+struct eqstr {
+    bool operator()(const string &s1, const string &s2) const
+    {
+        return s1.compare(s2) == 0;
+    }
+};
+
+struct eqint
+{
+    bool operator()(const uint64_t &i1, const uint64_t &i2) const
+    {
+        return i1 == i2;
+    }
+};
 
 std::set<uint32_t> parse_tuple(std::string const& line, size_t k)
 {
@@ -165,7 +233,7 @@ string term_to_string (vector<uint32_t> &terms) {
     return terms_string;
 }
 
-void load_lexicon(unordered_map<string, pair<int64_t, int64_t>> &lex_map, string &freq_path, string &gram_path, string &lexicon_path, int gram_size) {
+void load_lexicon(dense_hash_map<string, pair<int64_t, int64_t>, hash<string>, eqstr> &lex_map, string &freq_path, string &gram_path, string &lexicon_path, int gram_size) {
     vector<Query> exist_terms_queries = make_exist_term_queries(gram_path);
     vector<Query> freq_terms_queries = make_exist_term_queries(freq_path);
     unordered_set<string> freq_terms_string_set;
@@ -208,19 +276,57 @@ void load_lexicon(unordered_map<string, pair<int64_t, int64_t>> &lex_map, string
     in_lex.close();
 }
 
-float getTopKFromMap (unordered_map<uint64_t, short> &did_s_map, int k, int termConsidered, vector<uint32_t> &terms) {
-    vector<pair<uint64_t, short>> TopKVec;
+// return 1 if push successfully
+int insert_posting_to_heap(priority_queue<Posting, vector<Posting>, ComparePostingScore> &posting_max_heap, string &term_string, int rank, dense_hash_map<string, pair<int64_t, int64_t>, hash<string>, eqstr> &lex_map) {
+    vector<uint32_t> terms = getTermsFromString(term_string);
+    int64_t start_pos = lex_map[term_string].first;
+    int64_t end_pos = lex_map[term_string].second;
+    int64_t cur_pos = start_pos + 4;
+    cur_pos = cur_pos + rank * (4 + terms.size());
 
-    for (auto did_score : did_s_map) {
-        TopKVec.push_back({did_score.first, did_score.second});
+    if (cur_pos < end_pos) {
+        int did;
+        short total_score = 0;
+        if (terms.size() == 1) {
+            single_prefix_binary.seekg(cur_pos);
+            single_prefix_binary.read(reinterpret_cast<char*>(&did), 4);
+            for (int i = 0; i < terms.size(); i++) {
+                unsigned char score;
+                single_prefix_binary.read(reinterpret_cast<char*>(&score), 1);
+                total_score += (short)score;
+            }
+        } else if (terms.size() == 2) {
+            duplet_prefix_binary.seekg(cur_pos);
+            duplet_prefix_binary.read(reinterpret_cast<char*>(&did), 4);
+            for (int i = 0; i < terms.size(); i++) {
+                unsigned char score;
+                duplet_prefix_binary.read(reinterpret_cast<char*>(&score), 1);
+                total_score += (short)score;
+            }
+        } else if (terms.size() == 3) {
+            triplet_prefix_binary.seekg(cur_pos);
+            triplet_prefix_binary.read(reinterpret_cast<char*>(&did), 4);
+            for (int i = 0; i < terms.size(); i++) {
+                unsigned char score;
+                triplet_prefix_binary.read(reinterpret_cast<char*>(&score), 1);
+                total_score += (short)score;
+            }
+        } else if (terms.size() == 4) {
+            quadruplet_prefix_binary.seekg(cur_pos);
+            quadruplet_prefix_binary.read(reinterpret_cast<char*>(&did), 4);
+            for (int i = 0; i < terms.size(); i++) {
+                unsigned char score;
+                quadruplet_prefix_binary.read(reinterpret_cast<char*>(&score), 1);
+                total_score += (short)score;
+            }
+        } else {
+            cerr << "Wrong posting was considered" << endl;
+        }
+
+        posting_max_heap.push(Posting(did, total_score, term_string, rank));
+        return 1;
     }
-
-    sort(TopKVec.begin(), TopKVec.end(), cmpDidTPair);
-
-    if (TopKVec.size() < k) {
-        return -2.0;
-    }
-    return (double) TopKVec[k - 1].second;
+    return 0;
 }
 
 template <typename IndexType, typename WandType>
@@ -294,33 +400,12 @@ void kt_thresholds(
         argStr = split(*exist_term_filename, ',');
     }
 
-    string cache_filename = argStr[0];
+    int budget = atoi(argStr[0].c_str());
     int termConsidered = atoi(argStr[1].c_str());
-    int d = k * atoi(argStr[2].c_str());
+    //int d = k * atoi(argStr[2].c_str());
 
-    unordered_map<string, pair<int64_t, int64_t>> lex_map;
-
-
-
-    string single_freq_path = "/home/jg6226/data/Hit_Ratio_Project/Lexicon/CW09B.fwd.terms";
-    string single_gram_path = "/home/jg6226/data/Hit_Ratio_Project/Lexicon/CW09B.fwd.terms";
-    string single_prefix_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/single_with_termscore/single_prefix";
-    string single_lexicon_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/single_with_termscore/single_lexicon.txt";
-
-    string duplet_freq_path = "/ssd2/home/bmmliu/logBaseFreq/2_term_freq_1.txt";
-    string duplet_gram_path = "/home/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/Prefix_Grams/duplet_cleaned.txt";
-    string duplet_prefix_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/duplet_with_termscore/duplet_prefix";
-    string duplet_lexicon_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/duplet_with_termscore/duplet_lexicon.txt";
-
-    string triplet_freq_path = "/ssd2/home/bmmliu/logBaseFreq/3_term_freq_2.txt";
-    string triplet_gram_path = "/home/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/Prefix_Grams/triplet_cleaned.txt";
-    string triplet_prefix_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/triplet_with_termscore/triplet_prefix";
-    string triplet_lexicon_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/triplet_with_termscore/triplet_lexicon.txt";
-
-    string quadruplet_freq_path = "/ssd2/home/bmmliu/logBaseFreq/4_term_freq_2.txt";
-    string quadruplet_gram_path = "/home/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/Prefix_Grams/quadruplet_cleaned.txt";
-    string quadruplet_prefix_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/quadruplet_with_termscore/quadruplet_prefix";
-    string quadruplet_lexicon_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/quadruplet_with_termscore/quadruplet_lexicon.txt";
+    dense_hash_map<string, pair<int64_t, int64_t>, hash<string>, eqstr> lex_map;
+    lex_map.set_empty_key("NULL");
 
     load_lexicon(lex_map, single_freq_path, single_gram_path, single_lexicon_path, 1);
     if (termConsidered >= 2) {
@@ -333,11 +418,17 @@ void kt_thresholds(
         load_lexicon(lex_map, quadruplet_freq_path, quadruplet_gram_path, quadruplet_lexicon_path, 4);
     }
 
+    single_prefix_binary.open(single_prefix_path, std::ios::in | std::ios::binary);
+    duplet_prefix_binary.open(duplet_prefix_path, std::ios::in | std::ios::binary);
+    triplet_prefix_binary.open(triplet_prefix_path, std::ios::in | std::ios::binary);
+    quadruplet_prefix_binary.open(quadruplet_prefix_path, std::ios::in | std::ios::binary);
+
 
     vector<float> realThreshold;
 
     vector<float> singleThreshold;
     vector<int> singleEstimatedK;
+    vector<int> budgetUsed;
     vector<float> singleQueryTimeVec;
 
     auto t_start = std::chrono::high_resolution_clock::now();
@@ -358,7 +449,6 @@ void kt_thresholds(
 
         topk_old.clear();
         float allTermThreshold = -1.0;
-        float curEstimate;
         if (allTermResults.size() >= k) {
             allTermThreshold = allTermResults[k - 1].first;
         }
@@ -370,72 +460,62 @@ void kt_thresholds(
             singleThreshold.push_back(-1.0);
             singleEstimatedK.push_back(-1);
             singleQueryTimeVec.push_back(-1.0);
+            budgetUsed.push_back(-1);
             continue;
         }
 
-        topk_queue topk(d);
-        wand_query wand_q(topk);
-
+        t_start = std::chrono::high_resolution_clock::now();
+        priority_queue<Posting, vector<Posting>, ComparePostingScore> posting_max_heap;
         vector<string> allPossibleComb = getAllPossibleComb(terms, termConsidered);
+        float curEstimate;
 
-        unordered_map<uint64_t, short> did_s_map;
+
+        dense_hash_set<uint64_t, hash<uint64_t>, eqint> popped_did;
+        popped_did.set_empty_key(NULL);
+
+        //unordered_set<uint64_t> popped_did;
 
         for (string comb : allPossibleComb) {
             if (lex_map.find(comb) != lex_map.end()) {
-                vector<uint32_t> sub_terms = getTermsFromString(comb);
-
-                int size_of_gram = sub_terms.size();
-                string prefix_file_name = "";
-                if (size_of_gram == 1) {
-                    prefix_file_name = single_prefix_path;
-                } else if (size_of_gram == 2) {
-                    prefix_file_name = duplet_prefix_path;
-                } else if (size_of_gram == 3) {
-                    prefix_file_name = triplet_prefix_path;
-                } else if (size_of_gram == 4) {
-                    prefix_file_name = quadruplet_prefix_path;
-                }
-
-                ifstream prefix_binary;
-                prefix_binary.open(prefix_file_name, std::ios::in | std::ios::binary);
-
-                int64_t start_pos = lex_map[comb].first;
-                int64_t end_pos = lex_map[comb].second;
-                int64_t cur_pos = start_pos + 4;
-                int d_count = 0;
-                while (cur_pos < end_pos && d_count < d) {
-                    prefix_binary.seekg(cur_pos);
-
-                    int did;
-                    short total_score = 0;
-                    prefix_binary.read(reinterpret_cast<char*>(&did), 4);
-                    for (int i = 0; i < size_of_gram; i++) {
-                        unsigned char score;
-                        prefix_binary.read(reinterpret_cast<char*>(&score), 1);
-                        total_score += (short)score;
-                    }
-
-                    if (did_s_map.find(did) == did_s_map.end()) {
-                        did_s_map[did] = total_score;
-                    } else {
-                        did_s_map[did] = max(total_score, did_s_map[did]);
-                    }
-
-                    cur_pos += 4 + size_of_gram;
-                    d_count++;
-                }
-                prefix_binary.close();
+                vector<uint32_t> terms = getTermsFromString(comb);
+                insert_posting_to_heap(posting_max_heap, comb, 0, lex_map);
             }
         }
 
-        t_start = std::chrono::high_resolution_clock::now();
-        curEstimate = getTopKFromMap(did_s_map, k, termConsidered, terms);
+        //clog << "initial heap size is: " << posting_max_heap.size() << endl;
+
+        Posting top_posting(0, -1, "wrong", -1);
+        int cur_budget = budget;
+
+        while (popped_did.size() < k && cur_budget > 0 && posting_max_heap.size() > 0) {
+            top_posting = posting_max_heap.top();
+            posting_max_heap.pop();
+            int if_push_success = insert_posting_to_heap(posting_max_heap, top_posting.term_string, top_posting.rank + 1, lex_map);
+
+            if (if_push_success == 1) {
+                //clog << "push success" << endl;
+                cur_budget--;
+            }
+            popped_did.insert(top_posting.did);
+            //clog << "popped did count is: " << popped_did.size() << endl;
+        }
+
+
+        if (popped_did.size() == k) {
+            curEstimate = (double)top_posting.score;
+            budgetUsed.push_back(budget - cur_budget);
+            //clog << "budget remaining: " << cur_budget << endl;
+        } else {
+            curEstimate = -2.0;
+        }
+
         t_end = std::chrono::high_resolution_clock::now();
         singleThreshold.push_back(curEstimate);
         singleQueryTimeVec.push_back(std::chrono::duration<double, std::milli>(t_end-t_start).count());
 
         if (curEstimate < 0) {
             singleEstimatedK.push_back(-2);
+            budgetUsed.push_back(-2);
             continue;
         }
 
@@ -454,6 +534,11 @@ void kt_thresholds(
             clog << count << "queries consider terms = " << termConsidered << " k = " << k << " processed -- combine did" << endl;
         }
     }
+
+    single_prefix_binary.close();
+    duplet_prefix_binary.close();
+    triplet_prefix_binary.close();
+    quadruplet_prefix_binary.close();
 
     // print result
     std::cout << "real threshold" << endl;
@@ -476,6 +561,12 @@ void kt_thresholds(
     std::cout << "*************************************************************" << endl;
     for(int i = 0; i < singleQueryTimeVec.size(); i++) {
         cout << singleQueryTimeVec[i] << '\n';
+    }
+
+    std::cout << "single budget used" << endl;
+    std::cout << "*************************************************************" << endl;
+    for(int i = 0; i < budgetUsed.size(); i++) {
+        cout << budgetUsed[i] << '\n';
     }
 
 }
