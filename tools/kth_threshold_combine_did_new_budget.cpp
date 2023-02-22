@@ -49,12 +49,12 @@ string duplet_gram_path = "/home/jg6226/data/Hit_Ratio_Project/Real_Time_Query_S
 string duplet_prefix_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/duplet_with_termscore/duplet_prefix";
 string duplet_lexicon_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/duplet_with_termscore/duplet_lexicon.txt";
 
-string triplet_freq_path = "/ssd2/home/bmmliu/logBaseFreq/3_term_freq_2.txt";
+string triplet_freq_path = "/ssd2/home/bmmliu/logBaseFreq/3_term_freq_3.txt";
 string triplet_gram_path = "/home/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/Prefix_Grams/triplet_cleaned.txt";
 string triplet_prefix_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/triplet_with_termscore/triplet_prefix";
 string triplet_lexicon_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/triplet_with_termscore/triplet_lexicon.txt";
 
-string quadruplet_freq_path = "/ssd2/home/bmmliu/logBaseFreq/4_term_freq_2.txt";
+string quadruplet_freq_path = "/ssd2/home/bmmliu/logBaseFreq/4_term_freq_3.txt";
 string quadruplet_gram_path = "/home/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/Prefix_Grams/quadruplet_cleaned.txt";
 string quadruplet_prefix_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/quadruplet_with_termscore/quadruplet_prefix";
 string quadruplet_lexicon_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/quadruplet_with_termscore/quadruplet_lexicon.txt";
