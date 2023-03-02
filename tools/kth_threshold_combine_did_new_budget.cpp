@@ -162,18 +162,17 @@ bool ifDupTerm(vector<uint32_t> terms) {
 
 
 vector<string> getAllPossibleComb(vector<uint32_t> &terms, int termConsidered) {
-    vector<vector<int>> retVal;
     vector<string> retVal_string;
 
     if (terms.size() >= 1 && termConsidered >= 1) {
         for (int i = 0; i < terms.size(); ++i) {
-            retVal.push_back({i});
+            retVal_string.push_back(to_string(terms[i]));
         }
     }
     if (terms.size() >= 2 && termConsidered >= 2) {
         for (int i = 0; i < terms.size(); ++i) {
             for (int j = i + 1; j < terms.size(); ++j) {
-                retVal.push_back({i, j});
+                retVal_string.push_back(to_string(terms[i]) + "-" + to_string(terms[j]));
             }
         }
     }
@@ -182,7 +181,7 @@ vector<string> getAllPossibleComb(vector<uint32_t> &terms, int termConsidered) {
         for (int i = 0; i < terms.size(); ++i) {
             for (int j = i + 1; j < terms.size(); ++j) {
                 for (int s = j + 1; s < terms.size(); ++s) {
-                    retVal.push_back({i, j, s});
+                    retVal_string.push_back(to_string(terms[i]) + "-" + to_string(terms[j]) + "-" + to_string(terms[s]));
                 }
             }
         }
@@ -193,27 +192,17 @@ vector<string> getAllPossibleComb(vector<uint32_t> &terms, int termConsidered) {
             for (int j = i + 1; j < terms.size(); ++j) {
                 for (int s = j + 1; s < terms.size(); ++s) {
                     for (int t = s + 1; t < terms.size(); ++t) {
-                        retVal.push_back({i, j, s, t});
+                        retVal_string.push_back(to_string(terms[i]) + "-" + to_string(terms[j]) + "-" + to_string(terms[s]) + "-" + to_string(terms[t]));
                     }
                 }
             }
         }
     }
 
-
-    for (vector<int> comb : retVal) {
-        string CombStr = "";
-        for (int singleTerm : comb) {
-            CombStr += to_string(terms[singleTerm]) + "-";
-        }
-        CombStr.pop_back();
-        retVal_string.push_back(CombStr);
-    }
-
     return retVal_string;
 }
 
-vector<uint32_t> getTermsFromString (string termStr) {
+vector<uint32_t> getTermsFromString (string &termStr) {
     vector<string> termsVecStr = split(termStr, '-');
     vector<uint32_t> terms;
     for (string str : termsVecStr) {

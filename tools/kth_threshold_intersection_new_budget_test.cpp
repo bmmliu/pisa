@@ -496,7 +496,7 @@ void kt_thresholds(
         }
 
         //clog << "initial heap size is: " << posting_max_heap.size() << endl;
-        int cur_budget = budget;
+        int cur_budget = budget * k * allPossibleComb.size();
 
         while (cur_budget > 0 && posting_max_heap.size() > 0) {
             Posting top_posting = posting_max_heap.top();
