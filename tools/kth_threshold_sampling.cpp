@@ -2,6 +2,8 @@
 #include <optional>
 #include <unordered_set>
 #include <queue>
+#include <random>
+#include <algorithm>
 #include <chrono>
 #include <fstream>
 #include <sstream>
@@ -52,12 +54,12 @@ string duplet_gram_path = "/home/jg6226/data/Hit_Ratio_Project/Real_Time_Query_S
 string duplet_prefix_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/duplet_with_termscore/duplet_prefix";
 string duplet_lexicon_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/duplet_with_termscore/duplet_lexicon.txt";
 
-string triplet_freq_path = "/ssd2/home/bmmliu/logBaseFreq/3_term_freq_3.txt";
+string triplet_freq_path = "/ssd2/home/bmmliu/logBaseFreq/3_term_freq_2.txt";
 string triplet_gram_path = "/home/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/Prefix_Grams/triplet_cleaned.txt";
 string triplet_prefix_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/triplet_with_termscore/triplet_prefix";
 string triplet_lexicon_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/triplet_with_termscore/triplet_lexicon.txt";
 
-string quadruplet_freq_path = "/ssd2/home/bmmliu/logBaseFreq/4_term_freq_3.txt";
+string quadruplet_freq_path = "/ssd2/home/bmmliu/logBaseFreq/4_term_freq_2.txt";
 string quadruplet_gram_path = "/home/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/Prefix_Grams/quadruplet_cleaned.txt";
 string quadruplet_prefix_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/quadruplet_with_termscore/quadruplet_prefix";
 string quadruplet_lexicon_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/quadruplet_with_termscore/quadruplet_lexicon.txt";
@@ -113,6 +115,51 @@ struct eq32int
         return i1 == i2;
     }
 };
+
+
+double nCr(double n, double r) {
+    double sum = 1;
+
+    for(int i = 1; i <= r; i++){
+        sum = sum * (n - r + i) / i;
+    }
+
+    //return (int)sum;
+    return std::exp(std::lgamma(n + 1)- std::lgamma(r + 1) - std::lgamma(n - r + 1));
+}
+
+double calculateO(int k, int kPrime, double s) {
+    double res = 0.0;
+
+
+    for (int i = kPrime; i < k; i++) {
+        res += nCr(k - 1, i) * std::pow(s, i) * std::pow(1 - s, k - i - 1);
+    }
+
+    return res;
+}
+
+int getKPrime(int k, float s, float target_O) {
+
+    for (int k_prime = 1; k_prime < k; k_prime++) {
+        if (calculateO(k, k_prime, s) <= target_O) {
+            return k_prime;
+        }
+    }
+
+    return -1;
+}
+
+unordered_set<uint64_t> getSampleDid(int didMax, float samplePercent) {
+    int sampleSize = didMax * samplePercent;
+    std::vector<int> numbers(didMax+1);
+    std::iota(numbers.begin(), numbers.end(), 0);
+    std::random_device rd;
+    std::mt19937 g(rd());
+    std::shuffle(numbers.begin(), numbers.end(), g);
+    std::unordered_set<uint64_t> result(numbers.begin(), numbers.begin() + sampleSize);
+    return result;
+}
 
 std::set<uint32_t> parse_tuple(std::string const& line, size_t k)
 {
@@ -278,14 +325,14 @@ void load_lexicon(dense_hash_map<string, pair<int64_t, int64_t>, hash<string>, e
 }
 
 // return 1 if push successfully
-int insert_posting_to_heap(priority_queue<Posting, vector<Posting>, ComparePostingScore> &posting_max_heap, string &term_string, int rank, dense_hash_map<string, pair<int64_t, int64_t>, hash<string>, eqstr> &lex_map) {
+int insert_posting_to_heap(priority_queue<Posting, vector<Posting>, ComparePostingScore> &posting_max_heap, string &term_string, int rank, dense_hash_map<string, pair<int64_t, int64_t>, hash<string>, eqstr> &lex_map, unordered_set<uint64_t> &SampleDid) {
     vector<uint32_t> terms = getTermsFromString(term_string);
     int64_t start_pos = lex_map[term_string].first;
     int64_t end_pos = lex_map[term_string].second;
     int64_t cur_pos = start_pos + 4;
     cur_pos = cur_pos + rank * (4 + terms.size());
 
-    if (cur_pos < end_pos) {
+    while (cur_pos < end_pos) {
         int did;
         vector<short> scores;
         short total_score = 0;
@@ -329,6 +376,13 @@ int insert_posting_to_heap(priority_queue<Posting, vector<Posting>, ComparePosti
             cerr << "Wrong posting was considered" << endl;
         }
 
+        if (SampleDid.find(did) == SampleDid.end()) {
+            rank++;
+            scores.clear();
+            total_score = 0;
+            cur_pos = cur_pos + 4 + terms.size();
+            continue;
+        }
         posting_max_heap.push(Posting(did, total_score, scores, term_string, rank));
         return 1;
     }
@@ -408,7 +462,15 @@ void kt_thresholds(
 
     int budget = atoi(argStr[0].c_str());
     int termConsidered = atoi(argStr[1].c_str());
-    //int d = k * atoi(argStr[2].c_str());
+    float target_over_estimate_rate = atof(argStr[2].c_str());
+
+    unordered_set<uint64_t> SampleDid = getSampleDid(50220109, 0.05);
+
+    int KPrime = getKPrime(k, 0.05, target_over_estimate_rate);
+    cout << "k = " << k << endl;
+    cout << "budget = " << budget << endl;
+    cout << "target O = " << target_over_estimate_rate << endl;
+    cout << "k prime = " << KPrime << endl;
 
     dense_hash_map<string, pair<int64_t, int64_t>, hash<string>, eqstr> lex_map;
     lex_map.set_empty_key("NULL");
@@ -491,7 +553,7 @@ void kt_thresholds(
         //t_start = std::chrono::high_resolution_clock::now();
         for (string comb : allPossibleComb) {
             if (lex_map.find(comb) != lex_map.end()) {
-                insert_posting_to_heap(posting_max_heap, comb, 0, lex_map);
+                insert_posting_to_heap(posting_max_heap, comb, 0, lex_map, SampleDid);
             }
         }
 
@@ -501,7 +563,7 @@ void kt_thresholds(
         while (cur_budget > 0 && posting_max_heap.size() > 0) {
             Posting top_posting = posting_max_heap.top();
             posting_max_heap.pop();
-            int if_push_success = insert_posting_to_heap(posting_max_heap, top_posting.term_string, top_posting.rank + 1, lex_map);
+            int if_push_success = insert_posting_to_heap(posting_max_heap, top_posting.term_string, top_posting.rank + 1, lex_map, SampleDid);
 
             if (if_push_success == 1) {
                 //clog << "push success" << endl;
@@ -535,7 +597,7 @@ void kt_thresholds(
         }
 
 
-        if (did_scores_map.size() >= k) {
+        if (did_scores_map.size() >= KPrime) {
             vector<short> all_combined_scores;
             for(auto key_scores : did_scores_map) {
                 all_combined_scores.push_back(key_scores.second.second.back());
@@ -543,7 +605,7 @@ void kt_thresholds(
 
             sort(all_combined_scores.begin(), all_combined_scores.end(), greater<short>());
 
-            curEstimate = all_combined_scores[k - 1];
+            curEstimate = all_combined_scores[KPrime - 1];
             //clog << "budget remaining: " << cur_budget << endl;
         } else {
             curEstimate = -2.0;
