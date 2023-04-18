@@ -47,17 +47,17 @@ string single_gram_path = "/home/jg6226/data/Hit_Ratio_Project/Lexicon/CW09B.fwd
 string single_prefix_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/single_with_termscore/single_prefix";
 string single_lexicon_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/single_with_termscore/single_lexicon.txt";
 
-string duplet_freq_path = "/ssd2/home/bmmliu/logBaseFreq/2_term_freq_2.txt";
+string duplet_freq_path = "/ssd2/home/bmmliu/logBaseFreq/2_term_freq_1.txt";
 string duplet_gram_path = "/home/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/Prefix_Grams/duplet_cleaned.txt";
 string duplet_prefix_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/duplet_with_termscore/duplet_prefix";
 string duplet_lexicon_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/duplet_with_termscore/duplet_lexicon.txt";
 
-string triplet_freq_path = "/ssd2/home/bmmliu/logBaseFreq/3_term_freq_3.txt";
+string triplet_freq_path = "/ssd2/home/bmmliu/logBaseFreq/3_term_freq_2.txt";
 string triplet_gram_path = "/home/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/Prefix_Grams/triplet_cleaned.txt";
 string triplet_prefix_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/triplet_with_termscore/triplet_prefix";
 string triplet_lexicon_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/triplet_with_termscore/triplet_lexicon.txt";
 
-string quadruplet_freq_path = "/ssd2/home/bmmliu/logBaseFreq/4_term_freq_3.txt";
+string quadruplet_freq_path = "/ssd2/home/bmmliu/logBaseFreq/4_term_freq_2.txt";
 string quadruplet_gram_path = "/home/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/Prefix_Grams/quadruplet_cleaned.txt";
 string quadruplet_prefix_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/quadruplet_with_termscore/quadruplet_prefix";
 string quadruplet_lexicon_path = "/ssd3/jg6226/data/Hit_Ratio_Project/Real_Time_Query_System/First_Layer_Index/quadruplet_with_termscore/quadruplet_lexicon.txt";
@@ -407,21 +407,27 @@ void kt_thresholds(
     }
 
     int budget = atoi(argStr[0].c_str());
-    int termConsidered = atoi(argStr[1].c_str());
+    string freq = argStr[1].c_str();
+    int termConsidered = 4;
+    string sin_freq_file = "/home/jg6226/data/Hit_Ratio_Project/Lexicon/CW09B.fwd.terms";
+    string dup_freq_file = "/ssd2/home/bmmliu/logBaseFreq/2_term_freq_" + string(1, freq[1]) + ".txt";
+    string tri_freq_file = "/ssd2/home/bmmliu/logBaseFreq/3_term_freq_" + string(1, freq[2]) + ".txt";
+    string qud_freq_file = "/ssd2/home/bmmliu/logBaseFreq/4_term_freq_" + string(1, freq[3]) + ".txt";
+    //int termConsidered = atoi(argStr[1].c_str());
     //int d = k * atoi(argStr[2].c_str());
 
     dense_hash_map<string, pair<int64_t, int64_t>, hash<string>, eqstr> lex_map;
     lex_map.set_empty_key("NULL");
 
-    load_lexicon(lex_map, single_freq_path, single_gram_path, single_lexicon_path, 1);
+    load_lexicon(lex_map, sin_freq_file, single_gram_path, single_lexicon_path, 1);
     if (termConsidered >= 2) {
-        load_lexicon(lex_map, duplet_freq_path, duplet_gram_path, duplet_lexicon_path, 2);
+        load_lexicon(lex_map, dup_freq_file, duplet_gram_path, duplet_lexicon_path, 2);
     }
     if (termConsidered >= 3) {
-        load_lexicon(lex_map, triplet_freq_path, triplet_gram_path, triplet_lexicon_path, 3);
+        load_lexicon(lex_map, tri_freq_file, triplet_gram_path, triplet_lexicon_path, 3);
     }
     if (termConsidered >= 4) {
-        load_lexicon(lex_map, quadruplet_freq_path, quadruplet_gram_path, quadruplet_lexicon_path, 4);
+        load_lexicon(lex_map, qud_freq_file, quadruplet_gram_path, quadruplet_lexicon_path, 4);
     }
 
     single_prefix_binary.open(single_prefix_path, std::ios::in | std::ios::binary);
@@ -446,7 +452,7 @@ void kt_thresholds(
         auto terms = query.terms;
         const int query_length = terms.size();
 
-        topk_queue topk_old(k * 1000);
+        topk_queue topk_old(k);
         wand_query wand_q_old(topk_old);
 
         // calculate all terms threshold

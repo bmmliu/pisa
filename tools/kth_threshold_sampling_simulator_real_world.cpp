@@ -2,9 +2,14 @@
 #include <optional>
 #include <unordered_set>
 #include <queue>
+#include <random>
+#include <algorithm>
 #include <chrono>
 #include <fstream>
 #include <sstream>
+#include <sparsehash/dense_hash_set>
+#include <sparsehash/dense_hash_map>
+#include <bits/stdc++.h>
 
 #include "boost/algorithm/string/classification.hpp"
 #include "boost/algorithm/string/split.hpp"
@@ -31,7 +36,94 @@
 
 #include "CLI/CLI.hpp"
 
+#define MaxQueryLen 16
+
 using namespace pisa;
+using term_id_type = uint32_t;
+//using ext::hash;
+using google::dense_hash_set;
+using google::dense_hash_map;
+
+
+struct Posting
+{
+    uint64_t did;
+    short total_score;
+    vector<short> scores;
+    string term_string;
+    int rank;
+
+    Posting(uint64_t did, short total_score, vector<short> scores, string term_string, int rank)
+        : did(did), total_score(total_score), scores(scores), term_string(term_string), rank(rank) {}
+};
+
+struct ComparePostingScore {
+    bool operator()(Posting const& p1, Posting const& p2)
+    {
+        // return "true" if "p1" is ordered
+        // before "p2", for example:
+        return p1.total_score < p2.total_score;
+    }
+};
+
+struct eqstr {
+    bool operator()(const string &s1, const string &s2) const
+    {
+        return s1.compare(s2) == 0;
+    }
+};
+
+struct eq64int
+{
+    bool operator()(const uint64_t &i1, const uint64_t &i2) const
+    {
+        return i1 == i2;
+    }
+};
+
+struct eq32int
+{
+    bool operator()(const uint32_t &i1, const uint32_t &i2) const
+    {
+        return i1 == i2;
+    }
+};
+
+
+double nCr(double n, double r) {
+    double sum = 1;
+
+    for(int i = 1; i <= r; i++){
+        sum = sum * (n - r + i) / i;
+    }
+
+    //return (int)sum;
+    return std::exp(std::lgamma(n + 1)- std::lgamma(r + 1) - std::lgamma(n - r + 1));
+}
+
+double calculateO(int k, int kPrime, double s) {
+    double res = 0.0;
+
+
+    for (int i = kPrime; i < k; i++) {
+        res += nCr(k - 1, i) * std::pow(s, i) * std::pow(1 - s, k - i - 1);
+    }
+
+    return res;
+}
+
+int getKPrime(int k, float s, float target_O) {
+
+    for (int k_prime = 1; k_prime < k; k_prime++) {
+        if (calculateO(k, k_prime, s) <= target_O) {
+            return k_prime;
+        }
+    }
+
+    return -1;
+}
+
+
 
 std::set<uint32_t> parse_tuple(std::string const& line, size_t k)
 {
@@ -54,30 +146,6 @@ std::set<uint32_t> parse_tuple(std::string const& line, size_t k)
     return term_ids_int;
 }
 
-bool ifDupTerm(vector<uint32_t> terms) {
-    unordered_set<uint32_t> memo;
-    for (uint32_t term : terms) {
-        if (memo.find(term) != memo.end()) {
-            return true;
-        }
-        memo.insert(term);
-    }
-
-    return false;
-}
-
-vector<string> split (const string &s, char delim) {
-    vector<string> result;
-    stringstream ss (s);
-    string item;
-
-    while (getline (ss, item, delim)) {
-        result.push_back (item);
-    }
-
-    return result;
-}
-
 vector<Query> make_exist_term_queries(std::string exist_term_file) {
     std::vector<::pisa::Query> q;
     std::string m_term_lexicon = "/home/bmmliu/data/cw09b/CW09B.fwd.termlex";
@@ -85,16 +153,6 @@ vector<Query> make_exist_term_queries(std::string exist_term_file) {
     std::ifstream is(exist_term_file);
     io::for_each_line(is, parse_query);
     return q;
-}
-
-vector<uint32_t> getTermsFromString (string termStr) {
-    vector<string> termsVecStr = split(termStr, '-');
-    vector<uint32_t> terms;
-    for (string str : termsVecStr) {
-        terms.push_back(static_cast<uint32_t>(std::stoul(str)));
-    }
-
-    return terms;
 }
 
 void load_exist_terms(unordered_set<string> &cached_terms, string cache_filename) {
@@ -116,6 +174,74 @@ void load_exist_terms(unordered_set<string> &cached_terms, string cache_filename
         sorted_terms_string.pop_back();
         cached_terms.insert(sorted_terms_string);
     }
+}
+
+vector<string> split (const string &s, char delim) {
+    vector<string> result;
+    stringstream ss (s);
+    string item;
+
+    while (getline (ss, item, delim)) {
+        result.push_back (item);
+    }
+
+    return result;
+}
+
+bool ifDupTerm(vector<uint32_t> terms) {
+    unordered_set<uint32_t> memo;
+    for (uint32_t term : terms) {
+        if (memo.find(term) != memo.end()) {
+            return true;
+        }
+        memo.insert(term);
+    }
+
+    return false;
+}
+
+
+
+
+vector<uint32_t> getTermsFromString (string &termStr) {
+    vector<string> termsVecStr = split(termStr, '-');
+    vector<uint32_t> terms;
+    for (string str : termsVecStr) {
+        terms.push_back(static_cast<uint32_t>(std::stoul(str)));
+    }
+
+    return terms;
+}
+
+string term_to_string (vector<uint32_t> &terms) {
+    string terms_string = "";
+    for (uint32_t term_id: terms) {
+        terms_string += to_string(term_id) + "-";
+    }
+    terms_string.pop_back();
+
+    return terms_string;
+}
+
+unordered_set<uint64_t> getSampleDid(string sample_file_path) {
+    /*int sampleSize = didMax * samplePercent;
+    std::vector<int> numbers(didMax+1);
+    std::iota(numbers.begin(), numbers.end(), 0);
+    std::random_device rd;
+    std::mt19937 g(rd());
+    std::shuffle(numbers.begin(), numbers.end(), g);
+    std::unordered_set<uint64_t> result(numbers.begin(), numbers.begin() + sampleSize);*/
+
+    std::unordered_set<uint64_t> result;
+    string did_string;
+    ifstream MyReadFile(sample_file_path);
+    while (getline (MyReadFile, did_string)) {
+        result.insert(stoull(did_string));
+    }
+
+    // Close the file
+    MyReadFile.close();
+    return result;
 }
 
 template <typename IndexType, typename WandType>
@@ -179,6 +305,9 @@ void kt_thresholds(
         spdlog::info("Number of triples loaded: {}", triples_set.size());
     }
 
+    // get all kinds of combinations
+    //int numberOfTerms = 3;
+    //int d = k * 10;
     int getDandTFromFileNameFlag = 1;
     vector<string> argStr;
 
@@ -186,73 +315,45 @@ void kt_thresholds(
         argStr = split(*exist_term_filename, ',');
     }
 
-    string cache_filename = argStr[0];
-    int termConsidered = atoi(argStr[1].c_str());
+    int sample_percentage = atoi(argStr[0].c_str());
+    string freq = argStr[1].c_str();
+
+    float target_over_estimate_rate = atof(argStr[2].c_str());
+
+    string sample_did_file_name = "/ssd2/home/bmmliu/SampleDid/" + to_string(sample_percentage) + "PercentSampleDid.txt";
+
+    unordered_set<uint64_t> SampleDid = getSampleDid(sample_did_file_name);
+    int termConsidered = 4;
 
     unordered_set<string> cached_terms;
 
+    string dup_freq_file = "/ssd2/home/bmmliu/logBaseFreq/2_term_freq_" + string(1, freq[1]) + ".txt";
+    string tri_freq_file = "/ssd2/home/bmmliu/logBaseFreq/3_term_freq_" + string(1, freq[2]) + ".txt";
+    string qud_freq_file = "/ssd2/home/bmmliu/logBaseFreq/4_term_freq_" + string(1, freq[3]) + ".txt";
+
     load_exist_terms(cached_terms, "/home/jg6226/data/Hit_Ratio_Project/Lexicon/CW09B.fwd.terms");
-
-    if (termConsidered >= 2) {
-        load_exist_terms(cached_terms, "/ssd2/home/bmmliu/logBaseFreq/2_term_freq_1.txt");
-    }
-    if (termConsidered >= 3) {
-        load_exist_terms(cached_terms, "/ssd2/home/bmmliu/logBaseFreq/3_term_freq_1.txt");
-    }
-    if (termConsidered >= 4) {
-        load_exist_terms(cached_terms, "/ssd2/home/bmmliu/logBaseFreq/4_term_freq_1.txt");
-    }
-    //load_exist_terms(cached_terms, "/ssd2/home/bmmliu/logBaseFreq/1_term_freq_5.txt");
-    //load_exist_terms(cached_terms, "/ssd2/home/bmmliu/logBaseFreq/2_term_freq_5.txt");
-    //load_exist_terms(cached_terms, "/ssd2/home/bmmliu/logBaseFreq/3_term_freq_5.txt");
-    //load_exist_terms(cached_terms, "/ssd2/home/bmmliu/logBaseFreq/4_term_freq_5.txt");
+    load_exist_terms(cached_terms, dup_freq_file);
+    load_exist_terms(cached_terms, tri_freq_file);
+    load_exist_terms(cached_terms, qud_freq_file);
 
 
-    vector<float> realThreshold;
+
+    int KPrime = getKPrime(k, sample_percentage / 100.0, target_over_estimate_rate);
+    cout << "k = " << k << endl;
+    cout << "target O = " << target_over_estimate_rate << endl;
+    cout << "k prime = " << KPrime << endl;
 
     vector<float> singleThreshold;
-    vector<int> singleEstimatedK;
-    vector<float> singleQueryTimeVec;
-
-    auto t_start = std::chrono::high_resolution_clock::now();
-    auto t_end = std::chrono::high_resolution_clock::now();
 
     int count = 0;
     for (auto const& query: queries) {
-
         auto terms = query.terms;
-
-        topk_queue topk_old(k * 1000);
-        wand_query wand_q_old(topk_old);
-
-        // calculate all terms threshold
-        wand_q_old(make_max_scored_cursors(index, wdata, *scorer, query), index.num_docs());
-        topk_old.finalize();
-        auto allTermResults = topk_old.topk();
-
-        topk_old.clear();
-        float allTermThreshold = -1.0;
-        if (allTermResults.size() >= k) {
-            allTermThreshold = allTermResults[k - 1].first;
-        }
-
-        realThreshold.push_back(allTermThreshold);
-
-        // If doc less than k
-        if (allTermThreshold == -1.0) {
-            singleThreshold.push_back(-1.0);
-            singleEstimatedK.push_back(-1);
-            singleQueryTimeVec.push_back(-1.0);
-            continue;
-        }
-
 
         float threshold = 0;
 
-        topk_queue topk(k);
+        topk_queue topk(k * 10);
         wand_query wand_q(topk);
 
-        t_start = std::chrono::high_resolution_clock::now();
 
         sort(terms.begin(), terms.end());
         string subCombStr = "";
@@ -264,9 +365,24 @@ void kt_thresholds(
             Query query;
             query.terms.push_back(term);
             wand_q(make_max_scored_cursors(index, wdata, *scorer, query), index.num_docs());
-            threshold = std::max(threshold, topk.size() == k ? topk.true_threshold() : 0.0F);
+
+            topk.finalize();
+            auto allTermResults = topk.topk();
             topk.clear();
+
+            int validDidCount = 0;
+            for (auto post : allTermResults) {
+                if (SampleDid.find(post.second) != SampleDid.end()) {
+                    validDidCount++;
+                }
+                if (validDidCount == KPrime) {
+                    threshold = max(threshold, post.first);
+                    break;
+                }
+            }
+
         }
+
         if (terms.size() >= 2 && termConsidered >= 2) {
             for (size_t i = 0; i < terms.size(); ++i) {
                 for (size_t j = i + 1; j < terms.size(); ++j) {
@@ -277,8 +393,21 @@ void kt_thresholds(
                     Query query;
                     query.terms = {terms[i], terms[j]};
                     wand_q(make_max_scored_cursors(index, wdata, *scorer, query), index.num_docs());
-                    threshold = std::max(threshold, topk.size() == k ? topk.true_threshold() : 0.0F);
+
+                    topk.finalize();
+                    auto allTermResults = topk.topk();
                     topk.clear();
+
+                    int validDidCount = 0;
+                    for (auto post : allTermResults) {
+                        if (SampleDid.find(post.second) != SampleDid.end()) {
+                            validDidCount++;
+                        }
+                        if (validDidCount == KPrime) {
+                            threshold = max(threshold, post.first);
+                            break;
+                        }
+                    }
                 }
             }
         }
@@ -293,11 +422,22 @@ void kt_thresholds(
                         }
                         Query query;
                         query.terms = {terms[i], terms[j], terms[s]};
-                        wand_q(
-                            make_max_scored_cursors(index, wdata, *scorer, query), index.num_docs());
-                        threshold =
-                            std::max(threshold, topk.size() == k ? topk.true_threshold() : 0.0F);
+                        wand_q(make_max_scored_cursors(index, wdata, *scorer, query), index.num_docs());
+
+                        topk.finalize();
+                        auto allTermResults = topk.topk();
                         topk.clear();
+
+                        int validDidCount = 0;
+                        for (auto post : allTermResults) {
+                            if (SampleDid.find(post.second) != SampleDid.end()) {
+                                validDidCount++;
+                            }
+                            if (validDidCount == KPrime) {
+                                threshold = max(threshold, post.first);
+                                break;
+                            }
+                        }
                     }
                 }
             }
@@ -314,11 +454,22 @@ void kt_thresholds(
                             }
                             Query query;
                             query.terms = {terms[i], terms[j], terms[s], terms[t]};
-                            wand_q(
-                                make_max_scored_cursors(index, wdata, *scorer, query), index.num_docs());
-                            threshold =
-                                std::max(threshold, topk.size() == k ? topk.true_threshold() : 0.0F);
+                            wand_q(make_max_scored_cursors(index, wdata, *scorer, query), index.num_docs());
+
+                            topk.finalize();
+                            auto allTermResults = topk.topk();
                             topk.clear();
+
+                            int validDidCount = 0;
+                            for (auto post : allTermResults) {
+                                if (SampleDid.find(post.second) != SampleDid.end()) {
+                                    validDidCount++;
+                                }
+                                if (validDidCount == KPrime) {
+                                    threshold = max(threshold, post.first);
+                                    break;
+                                }
+                            }
                         }
                     }
                 }
@@ -326,52 +477,21 @@ void kt_thresholds(
         }
 
         singleThreshold.push_back(threshold);
-        t_end = std::chrono::high_resolution_clock::now();
-        singleQueryTimeVec.push_back(std::chrono::duration<double, std::milli>(t_end-t_start).count());
 
-        if (threshold < 0) {
-            singleEstimatedK.push_back(-2);
-            continue;
-        }
-
-        for (int i = 0; i < allTermResults.size() - 1; i++) {
-            if (allTermResults[i].first >= threshold && allTermResults[i + 1].first <= threshold) {
-                singleEstimatedK.push_back(i + 2);
-                break;
-            } else if (i == allTermResults.size() - 2) {
-                singleEstimatedK.push_back(i + 2);
-                break;
-            }
-        }
 
         count++;
         if (count % 10 == 0) {
-            clog << count << "queries consider terms = " << termConsidered << " k = " << k << " processed -- original real world" << endl;
+            clog << count << "queries sampling k = " << k << " target O = " << target_over_estimate_rate << " processed -- combine terms" << endl;
         }
     }
 
-    // print result
-    std::cout << "real threshold" << endl;
-    std::cout << "*************************************************************" << endl;
-    for(int i = 0; i < realThreshold.size(); i++) {
-        cout << realThreshold[i] << '\n';
-    }
 
     std::cout << "single threshold" << endl;
     std::cout << "*************************************************************" << endl;
     for(int i = 0; i < singleThreshold.size(); i++) {
         cout << singleThreshold[i] << '\n';
     }
-    std::cout << "single estimated K" << endl;
-    std::cout << "*************************************************************" << endl;
-    for(int i = 0; i < singleEstimatedK.size(); i++) {
-        cout << singleEstimatedK[i] << '\n';
-    }
-    std::cout << "single estimated time" << endl;
-    std::cout << "*************************************************************" << endl;
-    for(int i = 0; i < singleQueryTimeVec.size(); i++) {
-        cout << singleQueryTimeVec[i] << '\n';
-    }
+
 }
 
 using wand_raw_index = wand_data<wand_data_raw>;
@@ -406,6 +526,7 @@ int main(int argc, const char** argv)
         "A tab separated file containing all the cached term triples");
     auto exist_terms = app.add_option(
         "--exist", exist_term_filename, "A newline separated file containing all the exist term");
+
     app.add_flag("--all-pairs", all_pairs, "Consider all term pairs of a query")->excludes(pairs);
     app.add_flag("--all-triples", all_triples, "Consider all term triples of a query")->excludes(triples);
     app.add_flag("--quantized", quantized, "Quantizes the scores");

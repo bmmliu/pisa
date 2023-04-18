@@ -205,7 +205,7 @@ void kt_thresholds(
             threshold = std::max(threshold, topk.size() == k ? topk.true_threshold() : 0.0F);
             topk.clear();
         }
-        if (terms.size() > 2 && consideredTerm >= 2) {
+        if (terms.size() >= 2 && consideredTerm >= 2) {
             for (size_t i = 0; i < terms.size(); ++i) {
                 for (size_t j = i + 1; j < terms.size(); ++j) {
                     Query query;
@@ -217,7 +217,7 @@ void kt_thresholds(
             }
         }
 
-        if (terms.size() > 3 && consideredTerm >= 3) {
+        if (terms.size() >= 3 && consideredTerm >= 3) {
             for (size_t i = 0; i < terms.size(); ++i) {
                 for (size_t j = i + 1; j < terms.size(); ++j) {
                     for (size_t s = j + 1; s < terms.size(); ++s) {
@@ -233,7 +233,7 @@ void kt_thresholds(
             }
         }
 
-        if (terms.size() > 4 && consideredTerm >= 4) {
+        if (terms.size() >= 4 && consideredTerm >= 4) {
             for (size_t i = 0; i < terms.size(); ++i) {
                 for (size_t j = i + 1; j < terms.size(); ++j) {
                     for (size_t s = j + 1; s < terms.size(); ++s) {

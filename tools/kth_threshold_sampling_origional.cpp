@@ -1,6 +1,15 @@
 #include <iostream>
 #include <optional>
 #include <unordered_set>
+#include <queue>
+#include <random>
+#include <algorithm>
+#include <chrono>
+#include <fstream>
+#include <sstream>
+#include <sparsehash/dense_hash_set>
+#include <sparsehash/dense_hash_map>
+#include <bits/stdc++.h>
 
 #include "boost/algorithm/string/classification.hpp"
 #include "boost/algorithm/string/split.hpp"
@@ -22,11 +31,99 @@
 #include "wand_data_raw.hpp"
 
 #include "query/algorithm.hpp"
+#include "query/queries.hpp"
 #include "scorer/scorer.hpp"
 
 #include "CLI/CLI.hpp"
 
+#define MaxQueryLen 16
+
 using namespace pisa;
+using term_id_type = uint32_t;
+//using ext::hash;
+using google::dense_hash_set;
+using google::dense_hash_map;
+
+
+struct Posting
+{
+    uint64_t did;
+    short total_score;
+    vector<short> scores;
+    string term_string;
+    int rank;
+
+    Posting(uint64_t did, short total_score, vector<short> scores, string term_string, int rank)
+        : did(did), total_score(total_score), scores(scores), term_string(term_string), rank(rank) {}
+};
+
+struct ComparePostingScore {
+    bool operator()(Posting const& p1, Posting const& p2)
+    {
+        // return "true" if "p1" is ordered
+        // before "p2", for example:
+        return p1.total_score < p2.total_score;
+    }
+};
+
+struct eqstr {
+    bool operator()(const string &s1, const string &s2) const
+    {
+        return s1.compare(s2) == 0;
+    }
+};
+
+struct eq64int
+{
+    bool operator()(const uint64_t &i1, const uint64_t &i2) const
+    {
+        return i1 == i2;
+    }
+};
+
+struct eq32int
+{
+    bool operator()(const uint32_t &i1, const uint32_t &i2) const
+    {
+        return i1 == i2;
+    }
+};
+
+
+double nCr(double n, double r) {
+    double sum = 1;
+
+    for(int i = 1; i <= r; i++){
+        sum = sum * (n - r + i) / i;
+    }
+
+    //return (int)sum;
+    return std::exp(std::lgamma(n + 1)- std::lgamma(r + 1) - std::lgamma(n - r + 1));
+}
+
+double calculateO(int k, int kPrime, double s) {
+    double res = 0.0;
+
+
+    for (int i = kPrime; i < k; i++) {
+        res += nCr(k - 1, i) * std::pow(s, i) * std::pow(1 - s, k - i - 1);
+    }
+
+    return res;
+}
+
+int getKPrime(int k, float s, float target_O) {
+
+    for (int k_prime = 1; k_prime < k; k_prime++) {
+        if (calculateO(k, k_prime, s) <= target_O) {
+            return k_prime;
+        }
+    }
+
+    return -1;
+}
+
+
 
 std::set<uint32_t> parse_tuple(std::string const& line, size_t k)
 {
@@ -49,6 +146,27 @@ std::set<uint32_t> parse_tuple(std::string const& line, size_t k)
     return term_ids_int;
 }
 
+vector<string> split (const string &s, char delim) {
+    vector<string> result;
+    stringstream ss (s);
+    string item;
+
+    while (getline (ss, item, delim)) {
+        result.push_back (item);
+    }
+
+    return result;
+}
+
+vector<Query> make_exist_term_queries(std::string exist_term_file) {
+    std::vector<::pisa::Query> q;
+    std::string m_term_lexicon = "/home/bmmliu/data/cw09b/CW09B.fwd.termlex";
+    auto parse_query = resolve_query_parser(q, m_term_lexicon, std::nullopt, std::nullopt);
+    std::ifstream is(exist_term_file);
+    io::for_each_line(is, parse_query);
+    return q;
+}
+
 bool ifDupTerm(vector<uint32_t> terms) {
     unordered_set<uint32_t> memo;
     for (uint32_t term : terms) {
@@ -61,17 +179,29 @@ bool ifDupTerm(vector<uint32_t> terms) {
     return false;
 }
 
-vector<string> split (const string &s, char delim) {
-    vector<string> result;
-    stringstream ss (s);
-    string item;
 
-    while (getline (ss, item, delim)) {
-        result.push_back (item);
+
+
+vector<uint32_t> getTermsFromString (string &termStr) {
+    vector<string> termsVecStr = split(termStr, '-');
+    vector<uint32_t> terms;
+    for (string str : termsVecStr) {
+        terms.push_back(static_cast<uint32_t>(std::stoul(str)));
     }
 
-    return result;
+    return terms;
 }
+
+string term_to_string (vector<uint32_t> &terms) {
+    string terms_string = "";
+    for (uint32_t term_id: terms) {
+        terms_string += to_string(term_id) + "-";
+    }
+    terms_string.pop_back();
+
+    return terms_string;
+}
+
 
 template <typename IndexType, typename WandType>
 void kt_thresholds(
@@ -134,6 +264,9 @@ void kt_thresholds(
         spdlog::info("Number of triples loaded: {}", triples_set.size());
     }
 
+    // get all kinds of combinations
+    //int numberOfTerms = 3;
+    //int d = k * 10;
     int getDandTFromFileNameFlag = 1;
     vector<string> argStr;
 
@@ -141,50 +274,58 @@ void kt_thresholds(
         argStr = split(*exist_term_filename, ',');
     }
 
-    vector<float> realThreshold_10;
-    vector<float> realThreshold_100;
-    vector<float> realThreshold_1000;
+    int sample_percentage = atoi(argStr[0].c_str());
 
+    float target_over_estimate_rate = atof(argStr[2].c_str());
+
+
+    int KPrime = getKPrime(k, sample_percentage / 100.0, target_over_estimate_rate);
+    cout << "k = " << k << endl;
+    cout << "target O = " << target_over_estimate_rate << endl;
+    cout << "k prime = " << KPrime << endl;
+
+    vector<float> singleThreshold;
 
     int count = 0;
     for (auto const& query: queries) {
-        cout << count + 1 << ":";
         auto terms = query.terms;
 
-        topk_queue topk_old(2000);
-        //wand_query wand_q_old(topk_old);
-        ranked_or_query wand_q_old(topk_old);
+
+        topk_queue topk_old(KPrime);
+        wand_query wand_q_old(topk_old);
 
         // calculate all terms threshold
-        wand_q_old(make_max_scored_cursors(index, wdata, *scorer, query), index.num_docs());
+        auto cursors = make_max_scored_cursors(index, wdata, *scorer, query);
+        wand_q_old(cursors, index.num_docs());
         topk_old.finalize();
         auto allTermResults = topk_old.topk();
-
         topk_old.clear();
-        if (allTermResults.size() >= 10) {
-            cout << allTermResults[9].first << ";";
-        } else {
-            cout << 0 << ";";
+        float allTermThreshold = -1.0;
+
+        if (allTermResults.size() >= KPrime) {
+            allTermThreshold = allTermResults[KPrime - 1].first;
         }
 
-        if (allTermResults.size() >= 100) {
-            cout << allTermResults[99].first << ";";
-        } else {
-            cout << 0 << ";";
+        for (auto post : allTermResults) {
+            cout << "did: " << post.second << " score: " << post.first << endl;
         }
 
-        if (allTermResults.size() >= 1000) {
-            cout << allTermResults[999].first << endl;
-        } else {
-            cout << 0 << endl;
-        }
+        singleThreshold.push_back(allTermThreshold);
 
 
         count++;
-        if (count % 1000 == 0) {
-            clog << count << "queries processed" << endl;
+        if (count % 10 == 0) {
+            clog << count << "queries sampling k = " << k << " target O = " << target_over_estimate_rate << " processed -- combine terms" << endl;
         }
     }
+
+
+    std::cout << "single threshold" << endl;
+    std::cout << "*************************************************************" << endl;
+    for(int i = 0; i < singleThreshold.size(); i++) {
+        cout << singleThreshold[i] << '\n';
+    }
+
 }
 
 using wand_raw_index = wand_data<wand_data_raw>;
@@ -219,6 +360,7 @@ int main(int argc, const char** argv)
         "A tab separated file containing all the cached term triples");
     auto exist_terms = app.add_option(
         "--exist", exist_term_filename, "A newline separated file containing all the exist term");
+
     app.add_flag("--all-pairs", all_pairs, "Consider all term pairs of a query")->excludes(pairs);
     app.add_flag("--all-triples", all_triples, "Consider all term triples of a query")->excludes(triples);
     app.add_flag("--quantized", quantized, "Quantizes the scores");
