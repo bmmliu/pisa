@@ -83,28 +83,28 @@ public:
 
       // Load docs and scores
       //load_vector_from_file(docs, index_path + '/' + index_name + ".docs");
-      string docsFilePath = index_path + '/' + index_name + ".docs";
+      /*string docsFilePath = index_path + '/' + index_name + ".docs";
       bip::file_mapping docsFileMapping(docsFilePath.c_str(), bip::read_only);
       bip::mapped_region docsMappedRegion(docsFileMapping, bip::read_only);
-      uint32_t* docs = static_cast<uint32_t*>(docsMappedRegion.get_address());
-      std::size_t docs_len = docsMappedRegion.get_size() / sizeof(uint32_t);
+      docs = static_cast<uint32_t*>(docsMappedRegion.get_address());
+      docs_length = docsMappedRegion.get_size() / sizeof(uint32_t);
 
-      clog << docs_len << endl;
+      clog << docs_length << endl;
       clog << docs[0] << endl;
       clog << "load docs finished" << endl;
 
       string scoresFilePath = index_path + '/' + index_name + ".scores";
       bip::file_mapping scoresFileMapping(scoresFilePath.c_str(), bip::read_only);
       bip::mapped_region scoresMappedRegion(scoresFileMapping, bip::read_only);
-      uint32_t* scores = static_cast<uint32_t*>(scoresMappedRegion.get_address());
-      std::size_t scores_len = scoresMappedRegion.get_size() / sizeof(uint32_t);
+      scores = static_cast<uint32_t*>(scoresMappedRegion.get_address());
+      scores_length = scoresMappedRegion.get_size() / sizeof(uint32_t);
 
-      clog << scores_len << endl;
+      clog << scores_length << endl;
       clog << scores[0] << endl;
-      clog << "load scores finished" << endl;
+      clog << "load scores finished" << endl;*/
 
       // Load term lexicon
-      int cnt_line = 0;
+      uint64_t cnt_line = 0;
       std::ifstream f_term_lex(term_lexicon_path);
       std::string line;
       while (std::getline(f_term_lex, line)) {
@@ -116,17 +116,6 @@ public:
       f_term_lex.close();
 
       std::cout << "Total number terms: " << cnt_line << std::endl;
-  }
-
-  uint32_t chars_to_int(vector<char> chars) {
-      uint32_t result = 0;
-
-      for (int i = 0; i < 4; ++i) {
-          result <<= 8;
-          result |= static_cast<unsigned char>(chars[i]);
-      }
-
-      return result;
   }
 
   vector<string> split (const string &s, char delim) {
@@ -184,24 +173,51 @@ public:
       f_index_lex.close();
   }
 
-  vector<int> lookup_bm25_score_skip_block_fast(string &term, std::vector<int> &lst_did, int block_size = 1024) {
-      int termid = dict_term_termid[term];
+  vector<uint64_t> lookup_bm25_score_skip_block_fast(string &term, std::vector<uint64_t> &lst_did, int block_size = 1024) {
+
+
+      string docsFilePath = index_path + '/' + index_name + ".docs";
+      bip::file_mapping docsFileMapping(docsFilePath.c_str(), bip::read_only);
+      bip::mapped_region docsMappedRegion(docsFileMapping, bip::read_only);
+      uint32_t* docs = static_cast<uint32_t*>(docsMappedRegion.get_address());
+
+      string scoresFilePath = index_path + '/' + index_name + ".scores";
+      bip::file_mapping scoresFileMapping(scoresFilePath.c_str(), bip::read_only);
+      bip::mapped_region scoresMappedRegion(scoresFileMapping, bip::read_only);
+      uint32_t* scores = static_cast<uint32_t*>(scoresMappedRegion.get_address());
+
+      string lastdidFilePath = index_path + '/' + index_name + ".blocklast";
+      bip::file_mapping lastdidFileMapping(lastdidFilePath.c_str(), bip::read_only);
+      bip::mapped_region lastdidMappedRegion(lastdidFileMapping, bip::read_only);
+      uint32_t* lastdid = static_cast<uint32_t*>(lastdidMappedRegion.get_address());
+
+      uint64_t termid = dict_term_termid[term];
       auto offset_tuple = index_lex[termid];
-      int start_i = offset_tuple.first;
-      int end_i = offset_tuple.second;
+      uint64_t start_i = offset_tuple.first;
+      uint64_t end_i = offset_tuple.second;
 
-      std::vector<int> lst_score_result;
+      std::vector<uint64_t> lst_score_result;
 
-      int current_i = start_i + 1;
-      int block_idx = 0;
+      uint64_t current_i = start_i + 1;
+      uint64_t block_idx = 0;
       auto block_info_list = blocklast_lex[termid];
-      int block_num = lastdid[block_info_list.first];
-      int blocklast_real_start_index = block_info_list.first + 1;
 
-      int did_index = 0;
-      int block_offset = 0;
+      uint64_t block_num = lastdid[block_info_list.first];
+      uint64_t blocklast_real_start_index = block_info_list.first + 1;
+
+      /*std::cout << "termid: " << termid << std::endl;
+      std::cout << "start_i: " << start_i << std::endl;
+      std::cout << "end_i: " << end_i << std::endl;
+      std::cout << "current_i: " << current_i << std::endl;
+      std::cout << "block_idx: " << block_idx << std::endl;
+      std::cout << "block_info_list: (" << block_info_list.first << ", " << block_info_list.second << ")" << std::endl;
+      std::cout << "block_num: " << block_num << std::endl;
+      std::cout << "blocklast_real_start_index: " << blocklast_real_start_index << std::endl;*/
+
+      uint64_t did_index = 0;
+      uint64_t block_offset = 0;
       while (did_index < lst_did.size()) {
-          int did = lst_did[did_index];
+          uint64_t did = lst_did[did_index];
           while (block_idx < block_num - 1) {
               if (lastdid[blocklast_real_start_index + block_idx] < did) {
                   block_idx += 1;
@@ -212,19 +228,19 @@ public:
           }
 
           bool complete_tag = false;
-          for (int posting_idx = block_offset + 2 + current_i + block_size * block_idx;
+          for (uint64_t posting_idx = block_offset + 2 + current_i + block_size * block_idx;
                posting_idx < std::min(end_i + 2, 2 + current_i + block_size * (block_idx + 1));
                posting_idx++) {
 
               if (docs[posting_idx] == did) {
-                  int score = scores[posting_idx - 2];
+                  uint64_t score = scores[posting_idx - 2];
                   lst_score_result.push_back(score);
                   did_index += 1;
                   complete_tag = true;
                   block_offset = posting_idx - (2 + current_i + block_size * block_idx);
                   break;
               } else if (docs[posting_idx] > did) {
-                  int score = 0;
+                  uint64_t score = 0;
                   lst_score_result.push_back(score);
                   did_index += 1;
                   complete_tag = true;
@@ -234,7 +250,7 @@ public:
           }
 
           if (!complete_tag) {
-              int score = 0;
+              uint64_t score = 0;
               lst_score_result.push_back(score);
               did_index += 1;
           }
@@ -249,14 +265,17 @@ public:
       bip::file_mapping lastdidFileMapping(blocklast_file_path.c_str(), bip::read_only);
       bip::mapped_region lastdidMappedRegion(lastdidFileMapping, bip::read_only);
       uint32_t* lastdid = static_cast<uint32_t*>(lastdidMappedRegion.get_address());
-      std::size_t lastdid_len = lastdidMappedRegion.get_size() / sizeof(uint32_t);
+      long lastdid_length = lastdidMappedRegion.get_size() / sizeof(uint32_t);
 
-      int termid = 0;
-      int i = 0;
-      while (i < lastdid_len) {
-          int current_block_num = lastdid[i];
-          int start_offset = i;
-          int end_offset = i + current_block_num;
+      clog << lastdid_length << endl;
+      clog << lastdid[0] << endl;
+
+      uint32_t termid = 0;
+      uint64_t i = 0;
+      while (i < lastdid_length) {
+          uint64_t current_block_num = lastdid[i];
+          uint64_t start_offset = i;
+          uint64_t end_offset = i + current_block_num;
           blocklast_lex[termid] = {start_offset, end_offset};
 
           termid += 1;
@@ -270,17 +289,11 @@ private:
     //std::vector<uint32_t> docs;
     //std::vector<uint32_t> scores;
     //std::vector<uint32_t> lastdid;
-    uint32_t* docs;
-    long docs_length;
-    uint32_t* scores;
-    long scores_length;
-    uint32_t* lastdid;
-    long lastdid_length;
 
-    std::unordered_map<std::string, int> dict_term_termid;
-    std::unordered_map<int, std::string> dict_termid_term;
-    std::unordered_map<int, std::pair<uint32_t, uint32_t>> index_lex;
-    std::unordered_map<int, std::pair<uint32_t, uint32_t>> blocklast_lex;
+    std::unordered_map<std::string, uint64_t> dict_term_termid;
+    std::unordered_map<uint64_t, std::string> dict_termid_term;
+    std::unordered_map<uint64_t, std::pair<uint64_t, uint64_t>> index_lex;
+    std::unordered_map<uint64_t, std::pair<uint64_t, uint64_t>> blocklast_lex;
 };
 
 struct Posting
@@ -634,12 +647,27 @@ void kt_thresholds(
     invertedIndex.initialize(index_lexicon_path, blocklast_file_path);
 
     string term_to_lookup = "oklahoma";
-    vector<int> didList = {0, 1, 17342170, 43409139, 43409140};
+    vector<uint64_t> didList = {0, 1, 17342170, 43409139, 43409140};
     clog << "Look up start" << endl;
-    vector<int> lookup_result = invertedIndex.lookup_bm25_score_skip_block_fast(term_to_lookup, didList);
+    vector<uint64_t> lookup_result = invertedIndex.lookup_bm25_score_skip_block_fast(term_to_lookup, didList);
     for (auto score : lookup_result) {
         cout << score << ", ";
     }
+    cout << endl;
+
+    term_to_lookup = "certif";
+    lookup_result = invertedIndex.lookup_bm25_score_skip_block_fast(term_to_lookup, didList);
+    for (auto score : lookup_result) {
+        cout << score << ", ";
+    }
+    cout << endl;
+
+    term_to_lookup = "teach";
+    lookup_result = invertedIndex.lookup_bm25_score_skip_block_fast(term_to_lookup, didList);
+    for (auto score : lookup_result) {
+        cout << score << ", ";
+    }
+    cout << endl;
 
     return;
 
