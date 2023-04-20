@@ -14,6 +14,8 @@
 #include "boost/algorithm/string/classification.hpp"
 #include "boost/algorithm/string/split.hpp"
 #include <boost/functional/hash.hpp>
+#include <boost/interprocess/file_mapping.hpp>
+#include <boost/interprocess/mapped_region.hpp>
 
 #include "mio/mmap.hpp"
 #include "spdlog/sinks/stdout_color_sinks.h"
@@ -39,6 +41,7 @@
 #define MaxQueryLen 16
 
 using namespace pisa;
+namespace bip = boost::interprocess;
 using term_id_type = uint32_t;
 //using ext::hash;
 using google::dense_hash_set;
@@ -71,6 +74,214 @@ ifstream duplet_prefix_binary;
 ifstream triplet_prefix_binary;
 
 ifstream quadruplet_prefix_binary;
+
+class InvertedIndex {
+public:
+  InvertedIndex(const std::string& input_index_path, const std::string& input_index_name, const std::string& term_lexicon_path) {
+      index_path = input_index_path;
+      index_name = input_index_name;
+
+      // Load docs and scores
+      //load_vector_from_file(docs, index_path + '/' + index_name + ".docs");
+      string docsFilePath = index_path + '/' + index_name + ".docs";
+      bip::file_mapping docsFileMapping(docsFilePath.c_str(), bip::read_only);
+      bip::mapped_region docsMappedRegion(docsFileMapping, bip::read_only);
+      uint32_t* docs = static_cast<uint32_t*>(docsMappedRegion.get_address());
+      std::size_t docs_len = docsMappedRegion.get_size() / sizeof(uint32_t);
+
+      clog << docs_len << endl;
+      clog << docs[0] << endl;
+      clog << "load docs finished" << endl;
+
+      string scoresFilePath = index_path + '/' + index_name + ".scores";
+      bip::file_mapping scoresFileMapping(scoresFilePath.c_str(), bip::read_only);
+      bip::mapped_region scoresMappedRegion(scoresFileMapping, bip::read_only);
+      uint32_t* scores = static_cast<uint32_t*>(scoresMappedRegion.get_address());
+      std::size_t scores_len = scoresMappedRegion.get_size() / sizeof(uint32_t);
+
+      clog << scores_len << endl;
+      clog << scores[0] << endl;
+      clog << "load scores finished" << endl;
+
+      // Load term lexicon
+      int cnt_line = 0;
+      std::ifstream f_term_lex(term_lexicon_path);
+      std::string line;
+      while (std::getline(f_term_lex, line)) {
+          std::string term = line;
+          dict_term_termid[term] = cnt_line;
+          dict_termid_term[cnt_line] = term;
+          cnt_line++;
+      }
+      f_term_lex.close();
+
+      std::cout << "Total number terms: " << cnt_line << std::endl;
+  }
+
+  uint32_t chars_to_int(vector<char> chars) {
+      uint32_t result = 0;
+
+      for (int i = 0; i < 4; ++i) {
+          result <<= 8;
+          result |= static_cast<unsigned char>(chars[i]);
+      }
+
+      return result;
+  }
+
+  vector<string> split (const string &s, char delim) {
+      vector<string> result;
+      stringstream ss (s);
+      string item;
+
+      while (getline (ss, item, delim)) {
+          result.push_back (item);
+      }
+
+      return result;
+  }
+
+  string strip(string &inpt) {
+      auto start_it = inpt.begin();
+      auto end_it = inpt.rbegin();
+      while (std::isspace(*start_it))
+          ++start_it;
+      while (std::isspace(*end_it))
+          ++end_it;
+      return std::string(start_it, end_it.base());
+  }
+
+  void load_vector_from_file(std::vector<uint32_t>& vec, const std::string& file_path) {
+      std::ifstream input_file(file_path, std::ios::binary);
+      if (!input_file) {
+          std::cerr << "Error opening file: " << file_path << std::endl;
+          exit(1);
+      }
+
+      input_file.seekg(0, std::ios::end);
+      std::streampos file_size = input_file.tellg();
+      input_file.seekg(0, std::ios::beg);
+
+      vec.resize(file_size / sizeof(uint32_t));
+      input_file.read(reinterpret_cast<char*>(vec.data()), file_size);
+      input_file.close();
+  }
+
+  void initialize(const std::string& index_lexicon_path, const std::string& blocklast_file_path) {
+      load_index_lexicon(index_lexicon_path);
+      clog << "load index_lexicon finished" << endl;
+      load_blocklast_metadata(blocklast_file_path);
+      clog << "load blocklast_metadata finished" << endl;
+  }
+
+  void load_index_lexicon(const std::string& index_lexicon_path) {
+      std::ifstream f_index_lex(index_lexicon_path);
+      std::string line;
+      while (std::getline(f_index_lex, line)) {
+          vector<string> line_list = split(strip(line), ' ');
+          index_lex[stoi(line_list[0])] = {stoul(line_list[1]), stoul(line_list[2])};
+      }
+      f_index_lex.close();
+  }
+
+  vector<int> lookup_bm25_score_skip_block_fast(string &term, std::vector<int> &lst_did, int block_size = 1024) {
+      int termid = dict_term_termid[term];
+      auto offset_tuple = index_lex[termid];
+      int start_i = offset_tuple.first;
+      int end_i = offset_tuple.second;
+
+      std::vector<int> lst_score_result;
+
+      int current_i = start_i + 1;
+      int block_idx = 0;
+      auto block_info_list = blocklast_lex[termid];
+      int block_num = lastdid[block_info_list.first];
+      int blocklast_real_start_index = block_info_list.first + 1;
+
+      int did_index = 0;
+      int block_offset = 0;
+      while (did_index < lst_did.size()) {
+          int did = lst_did[did_index];
+          while (block_idx < block_num - 1) {
+              if (lastdid[blocklast_real_start_index + block_idx] < did) {
+                  block_idx += 1;
+                  block_offset = 0;
+              } else if (lastdid[blocklast_real_start_index + block_idx] >= did) {
+                  break;
+              }
+          }
+
+          bool complete_tag = false;
+          for (int posting_idx = block_offset + 2 + current_i + block_size * block_idx;
+               posting_idx < std::min(end_i + 2, 2 + current_i + block_size * (block_idx + 1));
+               posting_idx++) {
+
+              if (docs[posting_idx] == did) {
+                  int score = scores[posting_idx - 2];
+                  lst_score_result.push_back(score);
+                  did_index += 1;
+                  complete_tag = true;
+                  block_offset = posting_idx - (2 + current_i + block_size * block_idx);
+                  break;
+              } else if (docs[posting_idx] > did) {
+                  int score = 0;
+                  lst_score_result.push_back(score);
+                  did_index += 1;
+                  complete_tag = true;
+                  block_offset = posting_idx - (2 + current_i + block_size * block_idx);
+                  break;
+              }
+          }
+
+          if (!complete_tag) {
+              int score = 0;
+              lst_score_result.push_back(score);
+              did_index += 1;
+          }
+      }
+
+      return lst_score_result;
+  }
+
+  void load_blocklast_metadata(const std::string& blocklast_file_path) {
+      //load_vector_from_file(lastdid, blocklast_file_path);
+
+      bip::file_mapping lastdidFileMapping(blocklast_file_path.c_str(), bip::read_only);
+      bip::mapped_region lastdidMappedRegion(lastdidFileMapping, bip::read_only);
+      uint32_t* lastdid = static_cast<uint32_t*>(lastdidMappedRegion.get_address());
+      std::size_t lastdid_len = lastdidMappedRegion.get_size() / sizeof(uint32_t);
+
+      int termid = 0;
+      int i = 0;
+      while (i < lastdid_len) {
+          int current_block_num = lastdid[i];
+          int start_offset = i;
+          int end_offset = i + current_block_num;
+          blocklast_lex[termid] = {start_offset, end_offset};
+
+          termid += 1;
+          i += current_block_num;
+      }
+  }
+
+private:
+    std::string index_path;
+    std::string index_name;
+    //std::vector<uint32_t> docs;
+    //std::vector<uint32_t> scores;
+    //std::vector<uint32_t> lastdid;
+    uint32_t* docs;
+    long docs_length;
+    uint32_t* scores;
+    long scores_length;
+    uint32_t* lastdid;
+    long lastdid_length;
+
+    std::unordered_map<std::string, int> dict_term_termid;
+    std::unordered_map<int, std::string> dict_termid_term;
+    std::unordered_map<int, std::pair<uint32_t, uint32_t>> index_lex;
+    std::unordered_map<int, std::pair<uint32_t, uint32_t>> blocklast_lex;
+};
 
 struct Posting
 {
@@ -413,6 +624,25 @@ void kt_thresholds(
     bool all_pairs,
     bool all_triples)
 {
+    string index_path = "/home/jg6226/data/Hit_Ratio_Project/Uncompressed_Index_Quantized";
+    string index_name = "CW09B.quantized.url.inv";
+    string term_lexicon_path = "/home/jg6226/data/Hit_Ratio_Project/Lexicon/CW09B.fwd.terms";
+    string index_lexicon_path = index_path + "/CW09B.quantized.url.inv.indexlex";
+    string blocklast_file_path = index_path + "/CW09B.quantized.url.inv.blocklast";
+
+    InvertedIndex invertedIndex(index_path, index_name, term_lexicon_path);
+    invertedIndex.initialize(index_lexicon_path, blocklast_file_path);
+
+    string term_to_lookup = "oklahoma";
+    vector<int> didList = {0, 1, 17342170, 43409139, 43409140};
+    clog << "Look up start" << endl;
+    vector<int> lookup_result = invertedIndex.lookup_bm25_score_skip_block_fast(term_to_lookup, didList);
+    for (auto score : lookup_result) {
+        cout << score << ", ";
+    }
+
+    return;
+
     IndexType index;
     mio::mmap_source m(index_filename.c_str());
     mapper::map(index, m);
