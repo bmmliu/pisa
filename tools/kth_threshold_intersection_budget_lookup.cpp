@@ -76,214 +76,214 @@ ifstream triplet_prefix_binary;
 ifstream quadruplet_prefix_binary;
 
 class InvertedIndex {
-public:
-  InvertedIndex(const std::string& input_index_path, const std::string& input_index_name, const std::string& term_lexicon_path) {
-      index_path = input_index_path;
-      index_name = input_index_name;
+  public:
+    InvertedIndex(const std::string& input_index_path, const std::string& input_index_name, const std::string& term_lexicon_path) {
+        index_path = input_index_path;
+        index_name = input_index_name;
 
-      // Load docs and scores
-      //load_vector_from_file(docs, index_path + '/' + index_name + ".docs");
-      /*string docsFilePath = index_path + '/' + index_name + ".docs";
-      bip::file_mapping docsFileMapping(docsFilePath.c_str(), bip::read_only);
-      bip::mapped_region docsMappedRegion(docsFileMapping, bip::read_only);
-      docs = static_cast<uint32_t*>(docsMappedRegion.get_address());
-      docs_length = docsMappedRegion.get_size() / sizeof(uint32_t);
+        // Load docs and scores
+        //load_vector_from_file(docs, index_path + '/' + index_name + ".docs");
+        /*string docsFilePath = index_path + '/' + index_name + ".docs";
+        bip::file_mapping docsFileMapping(docsFilePath.c_str(), bip::read_only);
+        bip::mapped_region docsMappedRegion(docsFileMapping, bip::read_only);
+        docs = static_cast<uint32_t*>(docsMappedRegion.get_address());
+        docs_length = docsMappedRegion.get_size() / sizeof(uint32_t);
 
-      clog << docs_length << endl;
-      clog << docs[0] << endl;
-      clog << "load docs finished" << endl;
+        clog << docs_length << endl;
+        clog << docs[0] << endl;
+        clog << "load docs finished" << endl;
 
-      string scoresFilePath = index_path + '/' + index_name + ".scores";
-      bip::file_mapping scoresFileMapping(scoresFilePath.c_str(), bip::read_only);
-      bip::mapped_region scoresMappedRegion(scoresFileMapping, bip::read_only);
-      scores = static_cast<uint32_t*>(scoresMappedRegion.get_address());
-      scores_length = scoresMappedRegion.get_size() / sizeof(uint32_t);
+        string scoresFilePath = index_path + '/' + index_name + ".scores";
+        bip::file_mapping scoresFileMapping(scoresFilePath.c_str(), bip::read_only);
+        bip::mapped_region scoresMappedRegion(scoresFileMapping, bip::read_only);
+        scores = static_cast<uint32_t*>(scoresMappedRegion.get_address());
+        scores_length = scoresMappedRegion.get_size() / sizeof(uint32_t);
 
-      clog << scores_length << endl;
-      clog << scores[0] << endl;
-      clog << "load scores finished" << endl;*/
+        clog << scores_length << endl;
+        clog << scores[0] << endl;
+        clog << "load scores finished" << endl;*/
 
-      // Load term lexicon
-      uint64_t cnt_line = 0;
-      std::ifstream f_term_lex(term_lexicon_path);
-      std::string line;
-      while (std::getline(f_term_lex, line)) {
-          std::string term = line;
-          dict_term_termid[term] = cnt_line;
-          dict_termid_term[cnt_line] = term;
-          cnt_line++;
-      }
-      f_term_lex.close();
+        // Load term lexicon
+        uint64_t cnt_line = 0;
+        std::ifstream f_term_lex(term_lexicon_path);
+        std::string line;
+        while (std::getline(f_term_lex, line)) {
+            std::string term = line;
+            dict_term_termid[term] = cnt_line;
+            dict_termid_term[cnt_line] = term;
+            cnt_line++;
+        }
+        f_term_lex.close();
 
-      std::clog << "Total number terms: " << cnt_line << std::endl;
-  }
+        std::clog << "Total number terms: " << cnt_line << std::endl;
+    }
 
-  vector<string> split (const string &s, char delim) {
-      vector<string> result;
-      stringstream ss (s);
-      string item;
+    vector<string> split (const string &s, char delim) {
+        vector<string> result;
+        stringstream ss (s);
+        string item;
 
-      while (getline (ss, item, delim)) {
-          result.push_back (item);
-      }
+        while (getline (ss, item, delim)) {
+            result.push_back (item);
+        }
 
-      return result;
-  }
+        return result;
+    }
 
-  string strip(string &inpt) {
-      auto start_it = inpt.begin();
-      auto end_it = inpt.rbegin();
-      while (std::isspace(*start_it))
-          ++start_it;
-      while (std::isspace(*end_it))
-          ++end_it;
-      return std::string(start_it, end_it.base());
-  }
+    string strip(string &inpt) {
+        auto start_it = inpt.begin();
+        auto end_it = inpt.rbegin();
+        while (std::isspace(*start_it))
+            ++start_it;
+        while (std::isspace(*end_it))
+            ++end_it;
+        return std::string(start_it, end_it.base());
+    }
 
-  void load_vector_from_file(std::vector<uint32_t>& vec, const std::string& file_path) {
-      std::ifstream input_file(file_path, std::ios::binary);
-      if (!input_file) {
-          std::cerr << "Error opening file: " << file_path << std::endl;
-          exit(1);
-      }
+    void load_vector_from_file(std::vector<uint32_t>& vec, const std::string& file_path) {
+        std::ifstream input_file(file_path, std::ios::binary);
+        if (!input_file) {
+            std::cerr << "Error opening file: " << file_path << std::endl;
+            exit(1);
+        }
 
-      input_file.seekg(0, std::ios::end);
-      std::streampos file_size = input_file.tellg();
-      input_file.seekg(0, std::ios::beg);
+        input_file.seekg(0, std::ios::end);
+        std::streampos file_size = input_file.tellg();
+        input_file.seekg(0, std::ios::beg);
 
-      vec.resize(file_size / sizeof(uint32_t));
-      input_file.read(reinterpret_cast<char*>(vec.data()), file_size);
-      input_file.close();
-  }
+        vec.resize(file_size / sizeof(uint32_t));
+        input_file.read(reinterpret_cast<char*>(vec.data()), file_size);
+        input_file.close();
+    }
 
-  void initialize(const std::string& index_lexicon_path, const std::string& blocklast_file_path) {
-      load_index_lexicon(index_lexicon_path);
-      clog << "load index_lexicon finished" << endl;
-      load_blocklast_metadata(blocklast_file_path);
-      clog << "load blocklast_metadata finished" << endl;
-  }
+    void initialize(const std::string& index_lexicon_path, const std::string& blocklast_file_path) {
+        load_index_lexicon(index_lexicon_path);
+        clog << "load index_lexicon finished" << endl;
+        load_blocklast_metadata(blocklast_file_path);
+        clog << "load blocklast_metadata finished" << endl;
+    }
 
-  void load_index_lexicon(const std::string& index_lexicon_path) {
-      std::ifstream f_index_lex(index_lexicon_path);
-      std::string line;
-      while (std::getline(f_index_lex, line)) {
-          vector<string> line_list = split(strip(line), ' ');
-          index_lex[stoi(line_list[0])] = {stoul(line_list[1]), stoul(line_list[2])};
-      }
-      f_index_lex.close();
-  }
+    void load_index_lexicon(const std::string& index_lexicon_path) {
+        std::ifstream f_index_lex(index_lexicon_path);
+        std::string line;
+        while (std::getline(f_index_lex, line)) {
+            vector<string> line_list = split(strip(line), ' ');
+            index_lex[stoi(line_list[0])] = {stoul(line_list[1]), stoul(line_list[2])};
+        }
+        f_index_lex.close();
+    }
 
-  vector<uint64_t> lookup_bm25_score_skip_block_fast(uint64_t &termid, std::vector<uint64_t> &lst_did, int block_size = 1024) {
+    vector<uint64_t> lookup_bm25_score_skip_block_fast(uint64_t &termid, std::vector<uint64_t> &lst_did, int block_size = 1024) {
 
 
-      string docsFilePath = index_path + '/' + index_name + ".docs";
-      bip::file_mapping docsFileMapping(docsFilePath.c_str(), bip::read_only);
-      bip::mapped_region docsMappedRegion(docsFileMapping, bip::read_only);
-      uint32_t* docs = static_cast<uint32_t*>(docsMappedRegion.get_address());
+        string docsFilePath = index_path + '/' + index_name + ".docs";
+        bip::file_mapping docsFileMapping(docsFilePath.c_str(), bip::read_only);
+        bip::mapped_region docsMappedRegion(docsFileMapping, bip::read_only);
+        uint32_t* docs = static_cast<uint32_t*>(docsMappedRegion.get_address());
 
-      string scoresFilePath = index_path + '/' + index_name + ".scores";
-      bip::file_mapping scoresFileMapping(scoresFilePath.c_str(), bip::read_only);
-      bip::mapped_region scoresMappedRegion(scoresFileMapping, bip::read_only);
-      uint32_t* scores = static_cast<uint32_t*>(scoresMappedRegion.get_address());
+        string scoresFilePath = index_path + '/' + index_name + ".scores";
+        bip::file_mapping scoresFileMapping(scoresFilePath.c_str(), bip::read_only);
+        bip::mapped_region scoresMappedRegion(scoresFileMapping, bip::read_only);
+        uint32_t* scores = static_cast<uint32_t*>(scoresMappedRegion.get_address());
 
-      string lastdidFilePath = index_path + '/' + index_name + ".blocklast";
-      bip::file_mapping lastdidFileMapping(lastdidFilePath.c_str(), bip::read_only);
-      bip::mapped_region lastdidMappedRegion(lastdidFileMapping, bip::read_only);
-      uint32_t* lastdid = static_cast<uint32_t*>(lastdidMappedRegion.get_address());
+        string lastdidFilePath = index_path + '/' + index_name + ".blocklast";
+        bip::file_mapping lastdidFileMapping(lastdidFilePath.c_str(), bip::read_only);
+        bip::mapped_region lastdidMappedRegion(lastdidFileMapping, bip::read_only);
+        uint32_t* lastdid = static_cast<uint32_t*>(lastdidMappedRegion.get_address());
 
-      //uint64_t termid = dict_term_termid[term];
-      auto offset_tuple = index_lex[termid];
-      uint64_t start_i = offset_tuple.first;
-      uint64_t end_i = offset_tuple.second;
+        //uint64_t termid = dict_term_termid[term];
+        auto offset_tuple = index_lex[termid];
+        uint64_t start_i = offset_tuple.first;
+        uint64_t end_i = offset_tuple.second;
 
-      std::vector<uint64_t> lst_score_result;
+        std::vector<uint64_t> lst_score_result;
 
-      uint64_t current_i = start_i + 1;
-      uint64_t block_idx = 0;
-      auto block_info_list = blocklast_lex[termid];
+        uint64_t current_i = start_i + 1;
+        uint64_t block_idx = 0;
+        auto block_info_list = blocklast_lex[termid];
 
-      uint64_t block_num = lastdid[block_info_list.first];
-      uint64_t blocklast_real_start_index = block_info_list.first + 1;
+        uint64_t block_num = lastdid[block_info_list.first];
+        uint64_t blocklast_real_start_index = block_info_list.first + 1;
 
-      /*std::cout << "termid: " << termid << std::endl;
-      std::cout << "start_i: " << start_i << std::endl;
-      std::cout << "end_i: " << end_i << std::endl;
-      std::cout << "current_i: " << current_i << std::endl;
-      std::cout << "block_idx: " << block_idx << std::endl;
-      std::cout << "block_info_list: (" << block_info_list.first << ", " << block_info_list.second << ")" << std::endl;
-      std::cout << "block_num: " << block_num << std::endl;
-      std::cout << "blocklast_real_start_index: " << blocklast_real_start_index << std::endl;*/
+        /*std::cout << "termid: " << termid << std::endl;
+        std::cout << "start_i: " << start_i << std::endl;
+        std::cout << "end_i: " << end_i << std::endl;
+        std::cout << "current_i: " << current_i << std::endl;
+        std::cout << "block_idx: " << block_idx << std::endl;
+        std::cout << "block_info_list: (" << block_info_list.first << ", " << block_info_list.second << ")" << std::endl;
+        std::cout << "block_num: " << block_num << std::endl;
+        std::cout << "blocklast_real_start_index: " << blocklast_real_start_index << std::endl;*/
 
-      uint64_t did_index = 0;
-      uint64_t block_offset = 0;
-      while (did_index < lst_did.size()) {
-          uint64_t did = lst_did[did_index];
-          while (block_idx < block_num - 1) {
-              if (lastdid[blocklast_real_start_index + block_idx] < did) {
-                  block_idx += 1;
-                  block_offset = 0;
-              } else if (lastdid[blocklast_real_start_index + block_idx] >= did) {
-                  break;
-              }
-          }
+        uint64_t did_index = 0;
+        uint64_t block_offset = 0;
+        while (did_index < lst_did.size()) {
+            uint64_t did = lst_did[did_index];
+            while (block_idx < block_num - 1) {
+                if (lastdid[blocklast_real_start_index + block_idx] < did) {
+                    block_idx += 1;
+                    block_offset = 0;
+                } else if (lastdid[blocklast_real_start_index + block_idx] >= did) {
+                    break;
+                }
+            }
 
-          bool complete_tag = false;
-          for (uint64_t posting_idx = block_offset + 2 + current_i + block_size * block_idx;
-               posting_idx < std::min(end_i + 2, 2 + current_i + block_size * (block_idx + 1));
-               posting_idx++) {
+            bool complete_tag = false;
+            for (uint64_t posting_idx = block_offset + 2 + current_i + block_size * block_idx;
+                 posting_idx < std::min(end_i + 2, 2 + current_i + block_size * (block_idx + 1));
+                 posting_idx++) {
 
-              if (docs[posting_idx] == did) {
-                  uint64_t score = scores[posting_idx - 2];
-                  lst_score_result.push_back(score);
-                  did_index += 1;
-                  complete_tag = true;
-                  block_offset = posting_idx - (2 + current_i + block_size * block_idx);
-                  break;
-              } else if (docs[posting_idx] > did) {
-                  uint64_t score = 0;
-                  lst_score_result.push_back(score);
-                  did_index += 1;
-                  complete_tag = true;
-                  block_offset = posting_idx - (2 + current_i + block_size * block_idx);
-                  break;
-              }
-          }
+                if (docs[posting_idx] == did) {
+                    uint64_t score = scores[posting_idx - 2];
+                    lst_score_result.push_back(score);
+                    did_index += 1;
+                    complete_tag = true;
+                    block_offset = posting_idx - (2 + current_i + block_size * block_idx);
+                    break;
+                } else if (docs[posting_idx] > did) {
+                    uint64_t score = 0;
+                    lst_score_result.push_back(score);
+                    did_index += 1;
+                    complete_tag = true;
+                    block_offset = posting_idx - (2 + current_i + block_size * block_idx);
+                    break;
+                }
+            }
 
-          if (!complete_tag) {
-              uint64_t score = 0;
-              lst_score_result.push_back(score);
-              did_index += 1;
-          }
-      }
+            if (!complete_tag) {
+                uint64_t score = 0;
+                lst_score_result.push_back(score);
+                did_index += 1;
+            }
+        }
 
-      return lst_score_result;
-  }
+        return lst_score_result;
+    }
 
-  void load_blocklast_metadata(const std::string& blocklast_file_path) {
-      //load_vector_from_file(lastdid, blocklast_file_path);
+    void load_blocklast_metadata(const std::string& blocklast_file_path) {
+        //load_vector_from_file(lastdid, blocklast_file_path);
 
-      bip::file_mapping lastdidFileMapping(blocklast_file_path.c_str(), bip::read_only);
-      bip::mapped_region lastdidMappedRegion(lastdidFileMapping, bip::read_only);
-      uint32_t* lastdid = static_cast<uint32_t*>(lastdidMappedRegion.get_address());
-      long lastdid_length = lastdidMappedRegion.get_size() / sizeof(uint32_t);
+        bip::file_mapping lastdidFileMapping(blocklast_file_path.c_str(), bip::read_only);
+        bip::mapped_region lastdidMappedRegion(lastdidFileMapping, bip::read_only);
+        uint32_t* lastdid = static_cast<uint32_t*>(lastdidMappedRegion.get_address());
+        long lastdid_length = lastdidMappedRegion.get_size() / sizeof(uint32_t);
 
-      clog << lastdid_length << endl;
-      clog << lastdid[0] << endl;
+        clog << lastdid_length << endl;
+        clog << lastdid[0] << endl;
 
-      uint32_t termid = 0;
-      uint64_t i = 0;
-      while (i < lastdid_length) {
-          uint64_t current_block_num = lastdid[i];
-          uint64_t start_offset = i;
-          uint64_t end_offset = i + current_block_num;
-          blocklast_lex[termid] = {start_offset, end_offset};
+        uint32_t termid = 0;
+        uint64_t i = 0;
+        while (i < lastdid_length) {
+            uint64_t current_block_num = lastdid[i];
+            uint64_t start_offset = i;
+            uint64_t end_offset = i + current_block_num;
+            blocklast_lex[termid] = {start_offset, end_offset};
 
-          termid += 1;
-          i += current_block_num;
-      }
-  }
+            termid += 1;
+            i += current_block_num;
+        }
+    }
 
-private:
+  private:
     std::string index_path;
     std::string index_name;
     //std::vector<uint32_t> docs;
@@ -317,10 +317,6 @@ struct ComparePostingScore {
     }
 };
 
-bool comparePairs(const pair<int, short>& a, const pair<int, short>& b) {
-    return a.second > b.second;
-}
-
 struct eqstr {
     bool operator()(const string &s1, const string &s2) const
     {
@@ -343,60 +339,6 @@ struct eq32int
         return i1 == i2;
     }
 };
-
-
-double nCr(double n, double r) {
-    double sum = 1;
-
-    for(int i = 1; i <= r; i++){
-        sum = sum * (n - r + i) / i;
-    }
-
-    //return (int)sum;
-    return std::exp(std::lgamma(n + 1)- std::lgamma(r + 1) - std::lgamma(n - r + 1));
-}
-
-double calculateO(int k, int kPrime, double s) {
-    double res = 0.0;
-
-    for (int i = kPrime; i < k; i++) {
-        res += nCr(k - 1, i) * std::pow(s, i) * std::pow(1 - s, k - i - 1);
-    }
-
-    return res;
-}
-
-int getKPrime(int k, float s, float target_O) {
-
-    for (int k_prime = 1; k_prime < k; k_prime++) {
-        if (calculateO(k, k_prime, s) <= target_O) {
-            return k_prime;
-        }
-    }
-
-    return -1;
-}
-
-unordered_set<uint64_t> getSampleDid(string sample_file_path) {
-    /*int sampleSize = didMax * samplePercent;
-    std::vector<int> numbers(didMax+1);
-    std::iota(numbers.begin(), numbers.end(), 0);
-    std::random_device rd;
-    std::mt19937 g(rd());
-    std::shuffle(numbers.begin(), numbers.end(), g);
-    std::unordered_set<uint64_t> result(numbers.begin(), numbers.begin() + sampleSize);*/
-
-    std::unordered_set<uint64_t> result;
-    string did_string;
-    ifstream MyReadFile(sample_file_path);
-    while (getline (MyReadFile, did_string)) {
-        result.insert(stoull(did_string));
-    }
-
-    // Close the file
-    MyReadFile.close();
-    return result;
-}
 
 std::set<uint32_t> parse_tuple(std::string const& line, size_t k)
 {
@@ -562,7 +504,7 @@ void load_lexicon(dense_hash_map<string, pair<int64_t, int64_t>, hash<string>, e
 }
 
 // return 1 if push successfully
-int insert_posting_to_heap(priority_queue<Posting, vector<Posting>, ComparePostingScore> &posting_max_heap, string &term_string, int rank, dense_hash_map<string, pair<int64_t, int64_t>, hash<string>, eqstr> &lex_map, unordered_set<uint64_t> &SampleDid) {
+int insert_posting_to_heap(priority_queue<Posting, vector<Posting>, ComparePostingScore> &posting_max_heap, string &term_string, int rank, dense_hash_map<string, pair<int64_t, int64_t>, hash<string>, eqstr> &lex_map) {
     vector<uint32_t> terms = getTermsFromString(term_string);
     int64_t start_pos = lex_map[term_string].first;
     int64_t end_pos = lex_map[term_string].second;
@@ -613,13 +555,6 @@ int insert_posting_to_heap(priority_queue<Posting, vector<Posting>, ComparePosti
             cerr << "Wrong posting was considered" << endl;
         }
 
-        if (SampleDid.find(did) == SampleDid.end()) {
-            rank++;
-            scores.clear();
-            total_score = 0;
-            cur_pos = cur_pos + 4 + terms.size();
-            continue;
-        }
         posting_max_heap.push(Posting(did, total_score, scores, term_string, rank));
         return 1;
     }
@@ -715,29 +650,18 @@ void kt_thresholds(
         argStr = split(*exist_term_filename, ',');
     }
 
-    int sample_percentage = atoi(argStr[0].c_str());
-
-    string sample_did_file_name = "/ssd2/home/bmmliu/SampleDid/" + to_string(sample_percentage) + "PercentSampleDid.txt";
-    int budget = atoi(argStr[1].c_str());
+    int budget = atoi(argStr[0].c_str());
     int termConsidered = 4;
-    float target_over_estimate_rate = atof(argStr[2].c_str());
 
-    string freq = argStr[3].c_str();
+    string freq = argStr[1].c_str();
     string sin_freq_file = "/home/jg6226/data/Hit_Ratio_Project/Lexicon/CW09B.fwd.terms";
     string dup_freq_file = "/ssd2/home/bmmliu/logBaseFreq/2_term_freq_" + string(1, freq[1]) + ".txt";
     string tri_freq_file = "/ssd2/home/bmmliu/logBaseFreq/3_term_freq_" + string(1, freq[2]) + ".txt";
     string qud_freq_file = "/ssd2/home/bmmliu/logBaseFreq/4_term_freq_" + string(1, freq[3]) + ".txt";
 
-    unordered_set<uint64_t> SampleDid = getSampleDid(sample_did_file_name);
-
-    int KPrime = getKPrime(k, sample_percentage / 100.0, target_over_estimate_rate);
-    int targetDid = atoi(argStr[4].c_str()) * KPrime;
 
     cout << "k = " << k << endl;
     cout << "budget = " << budget << endl;
-    cout << "target O = " << target_over_estimate_rate << endl;
-    cout << "k prime = " << KPrime << endl;
-    cout << "Target Did = " << targetDid << endl;
 
     dense_hash_map<string, pair<int64_t, int64_t>, hash<string>, eqstr> lex_map;
     lex_map.set_empty_key("NULL");
@@ -820,18 +744,18 @@ void kt_thresholds(
         //t_start = std::chrono::high_resolution_clock::now();
         for (string comb : allPossibleComb) {
             if (lex_map.find(comb) != lex_map.end()) {
-                insert_posting_to_heap(posting_max_heap, comb, 0, lex_map, SampleDid);
+                insert_posting_to_heap(posting_max_heap, comb, 0, lex_map);
             }
         }
 
         //clog << "initial heap size is: " << posting_max_heap.size() << endl;
         int cur_budget = budget;
 
-        //while (cur_budget > 0 && posting_max_heap.size() > 0 && did_scores_map.size() < targetDid) {
+
         while (cur_budget > 0 && posting_max_heap.size() > 0) {
             Posting top_posting = posting_max_heap.top();
             posting_max_heap.pop();
-            int if_push_success = insert_posting_to_heap(posting_max_heap, top_posting.term_string, top_posting.rank + 1, lex_map, SampleDid);
+            int if_push_success = insert_posting_to_heap(posting_max_heap, top_posting.term_string, top_posting.rank + 1, lex_map);
 
             if (if_push_success == 1) {
                 //clog << "push success" << endl;
@@ -867,46 +791,35 @@ void kt_thresholds(
         // Do lookup here
 
         for (int i = 0; i < query_length; i++) {
-            vector<pair<uint64_t, short>> DidScoreBeforeLookUp;
-            vector<uint64_t> didForLookUp;
+            vector<uint64_t> curDidForLookUp;
             vector<uint64_t> lookupResult;
             for(auto key_scores : did_scores_map) {
                 if (!key_scores.second.first.test(i)) {
-                    DidScoreBeforeLookUp.push_back({key_scores.first, key_scores.second.second.back()});
+                    curDidForLookUp.push_back(key_scores.first);
                 }
             }
 
-            sort(DidScoreBeforeLookUp.begin(), DidScoreBeforeLookUp.end(), comparePairs);
-
-            int lookupBudget = targetDid;
-            for (auto didScore : DidScoreBeforeLookUp) {
-                if (lookupBudget > 0){
-                    didForLookUp.push_back(didScore.first);
-                }
-                lookupBudget--;
-            }
-
-            sort(didForLookUp.begin(), didForLookUp.end());
+            sort(curDidForLookUp.begin(), curDidForLookUp.end());
 
             uint64_t curTerm = terms[i];
-            lookupResult = invertedIndex.lookup_bm25_score_skip_block_fast(curTerm, didForLookUp);
+            lookupResult = invertedIndex.lookup_bm25_score_skip_block_fast(curTerm, curDidForLookUp);
 
-            for (int j = 0; j < didForLookUp.size(); j++) {
+            for (int j = 0; j < curDidForLookUp.size(); j++) {
                 if (lookupResult[j] <= 0) {
                     continue;
                 }
-                did_scores_map[didForLookUp[j]].first.set(i);
-                did_scores_map[didForLookUp[j]].second[i] = lookupResult[j];
+                did_scores_map[curDidForLookUp[j]].first.set(i);
+                did_scores_map[curDidForLookUp[j]].second[i] = lookupResult[j];
                 //cout << "did: " << curDidForLookUp[j] << ", ";
                 //cout << "score before: " << did_scores_map[curDidForLookUp[j]].second.back() << ", ";
-                did_scores_map[didForLookUp[j]].second.back() += lookupResult[j];
+                did_scores_map[curDidForLookUp[j]].second.back() += lookupResult[j];
                 //cout << "score after: " << did_scores_map[curDidForLookUp[j]].second.back() << endl;
             }
         }
 
 
         //cout << "total distinct did get: " << did_scores_map.size() << endl;
-        if (did_scores_map.size() >= KPrime) {
+        if (did_scores_map.size() >= k) {
             vector<short> all_combined_scores;
             for(auto key_scores : did_scores_map) {
                 all_combined_scores.push_back(key_scores.second.second.back());
@@ -914,7 +827,7 @@ void kt_thresholds(
 
             sort(all_combined_scores.begin(), all_combined_scores.end(), greater<short>());
 
-            curEstimate = all_combined_scores[KPrime - 1];
+            curEstimate = all_combined_scores[k - 1];
             //clog << "budget remaining: " << cur_budget << endl;
         } else {
             curEstimate = -2.0;
