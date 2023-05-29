@@ -76,6 +76,9 @@ target_link_libraries(taily-thresholds app CLI11)
 add_executable(extract-maxscores extract_maxscores.cpp)
 target_link_libraries(extract-maxscores app CLI11)
 
+add_executable(test_branch test_branch.cpp)
+target_link_libraries(test_branch app CLI11)
+
 if (PISA_ENABLE_TESTING AND BUILD_TESTING)
     add_subdirectory(tests)
 endif()
