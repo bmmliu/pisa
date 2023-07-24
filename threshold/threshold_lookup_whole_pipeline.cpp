@@ -14,6 +14,10 @@
 #include <sparsehash/dense_hash_set>
 #include <sparsehash/dense_hash_map>
 #include <bits/stdc++.h>
+#include <sys/mman.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <numeric>
 
 #include "boost/algorithm/string/classification.hpp"
 #include "boost/algorithm/string/split.hpp"
@@ -27,7 +31,7 @@
 
 #include "mappable/mapper.hpp"
 
-#include "../tools/app.hpp"
+#include "app.hpp"
 #include "cursor/max_scored_cursor.hpp"
 #include "index_types.hpp"
 #include "io.hpp"
@@ -103,9 +107,10 @@ candidates::index_path duplet = std::make_tuple(duplet_gram_path, duplet_lexicon
 candidates::index_path triplet = std::make_tuple(triplet_gram_path, triplet_lexicon_path, triplet_prefix_path);
 candidates::index_path quadruplet = std::make_tuple(quadruplet_gram_path, quadruplet_lexicon_path, quadruplet_prefix_path);
 
-candidates::realtime_heap_allocate allocate(single, duplet, triplet, quadruplet);
+//candidates::realtime_heap_allocate allocate(single, duplet, triplet, quadruplet);
 
 ifstream single_prefix_binary;
+std::vector<char> single_prefix_binary_vec;
 
 ifstream duplet_prefix_binary;
 
@@ -116,16 +121,18 @@ ifstream quadruplet_prefix_binary;
 std::unique_ptr<pisa::Tokenizer> tokenizer = std::make_unique<EnglishTokenizer>();
 
 
+
 struct Posting
 {
-    uint64_t did;
+    vector<uint32_t> term_ids;
     short total_score;
-    vector<short> scores;
+    short term_size;
     string term_string;
-    int rank;
+    int64_t cur_pos;
+    int64_t end_pos;
 
-    Posting(uint64_t did, short total_score, vector<short> scores, string term_string, int rank)
-        : did(did), total_score(total_score), scores(scores), term_string(term_string), rank(rank) {}
+    Posting(vector<uint32_t> term_ids, short total_score, short term_size, string term_string, int64_t cur_pos, int64_t end_pos)
+        : term_ids(term_ids), total_score(total_score), term_size(term_size), term_string(term_string), cur_pos(cur_pos), end_pos(end_pos) {}
 };
 
 struct ComparePostingScore {
@@ -201,23 +208,6 @@ vector<Query> make_exist_term_queries(std::string exist_term_file) {
     io::for_each_line(is, parse_query);
     return q;
 }
-
-bool cmpDidTPair(pair<uint64_t, short>& a, pair<uint64_t, short>& b){
-    return a.second > b.second;
-}
-
-bool ifDupTerm(vector<uint32_t> terms) {
-    unordered_set<uint32_t> memo;
-    for (uint32_t term : terms) {
-        if (memo.find(term) != memo.end()) {
-            return true;
-        }
-        memo.insert(term);
-    }
-
-    return false;
-}
-
 
 vector<string> getAllPossibleComb(vector<uint32_t> &terms, int termConsidered) {
     vector<string> retVal_string;
@@ -323,48 +313,105 @@ void load_lexicon(dense_hash_map<string, pair<int64_t, int64_t>, hash<string>, e
 }
 
 // return 1 if push successfully
-int insert_posting_to_heap(priority_queue<Posting, vector<Posting>, ComparePostingScore> &posting_max_heap, string &term_string, int rank, dense_hash_map<string, pair<int64_t, int64_t>, hash<string>, eqstr> &lex_map) {
-    vector<uint32_t> terms = getTermsFromString(term_string);
-    int64_t start_pos = lex_map[term_string].first;
-    int64_t end_pos = lex_map[term_string].second;
-    int64_t cur_pos = start_pos + 4;
-    cur_pos = cur_pos + rank * (4 + terms.size());
+int insert_posting_to_heap_vec(priority_queue<Posting, vector<Posting>, ComparePostingScore> &posting_max_heap, Posting cur_posting) {
 
-    while (cur_pos < end_pos) {
+    if (cur_posting.cur_pos < cur_posting.end_pos) {
+        int did;
+        short total_score = 0;
+
+        if (cur_posting.term_size == 1) {
+
+            std::memcpy(&did, single_prefix_binary_vec.data() + cur_posting.cur_pos, sizeof(int));
+            for (int i = 0; i < cur_posting.term_size; i++) {
+                unsigned char score;
+                std::memcpy(&score, single_prefix_binary_vec.data() + cur_posting.cur_pos + sizeof(int) + i, sizeof(unsigned char));
+                total_score += static_cast<short>(score);
+            }
+
+        } else {
+            cerr << "Wrong posting was considered" << endl;
+            return 0;
+        }
+
+        cur_posting.total_score = total_score;
+        cur_posting.cur_pos += 4 + cur_posting.term_size;
+        posting_max_heap.push(cur_posting);
+        return 1;
+    }
+    return 0;
+}
+
+int insert_posting_to_heap_vec_chunk(priority_queue<Posting, vector<Posting>, ComparePostingScore> &posting_max_heap, Posting cur_posting, int chunk_size, dense_hash_map<uint64_t, pair<bitset<MaxQueryLen>, short>, hash<uint64_t>, eq64int> &did_scores_map) {
+
+    if (cur_posting.cur_pos < cur_posting.end_pos) {
+        int did;
+        short total_score = 0;
+
+        if (cur_posting.term_size == 1) {
+
+            std::memcpy(&did, single_prefix_binary_vec.data() + cur_posting.cur_pos, sizeof(int));
+            for (int i = 0; i < cur_posting.term_size; i++) {
+                unsigned char score;
+                std::memcpy(&score, single_prefix_binary_vec.data() + cur_posting.cur_pos + sizeof(int) + i, sizeof(unsigned char));
+                total_score += static_cast<short>(score);
+            }
+
+        } else {
+            cerr << "Wrong posting was considered" << endl;
+            return 0;
+        }
+
+        cur_posting.total_score = total_score;
+        cur_posting.cur_pos += 4 + cur_posting.term_size;
+        posting_max_heap.push(cur_posting);
+        return 1;
+    }
+    return 0;
+}
+
+// return 1 if push successfully
+int insert_posting_to_heap(priority_queue<Posting, vector<Posting>, ComparePostingScore> &posting_max_heap, Posting cur_posting, int chunk_size, dense_hash_map<uint64_t, pair<bitset<MaxQueryLen>, short>, hash<uint64_t>, eq64int> &did_scores_map, dense_hash_map<uint32_t, short, hash<uint32_t>, eq32int> &term_position_map) {
+
+    int count = 0;
+    vector<int> didVec;
+    vector<vector<short>> scoresVec;
+    vector<short> totalScoreVec;
+
+    while (cur_posting.cur_pos < cur_posting.end_pos && count < chunk_size) {
         int did;
         vector<short> scores;
         short total_score = 0;
-        if (terms.size() == 1) {
-            single_prefix_binary.seekg(cur_pos);
+        if (cur_posting.term_size == 1) {
+            single_prefix_binary.seekg(cur_posting.cur_pos);
             single_prefix_binary.read(reinterpret_cast<char*>(&did), 4);
-            for (int i = 0; i < terms.size(); i++) {
+            for (int i = 0; i < cur_posting.term_size; i++) {
                 unsigned char score;
                 single_prefix_binary.read(reinterpret_cast<char*>(&score), 1);
                 scores.push_back((short)score);
                 total_score += (short)score;
             }
-        } else if (terms.size() == 2) {
-            duplet_prefix_binary.seekg(cur_pos);
+        } else if (cur_posting.term_size == 2) {
+            duplet_prefix_binary.seekg(cur_posting.cur_pos);
             duplet_prefix_binary.read(reinterpret_cast<char*>(&did), 4);
-            for (int i = 0; i < terms.size(); i++) {
+            for (int i = 0; i < cur_posting.term_size; i++) {
                 unsigned char score;
                 duplet_prefix_binary.read(reinterpret_cast<char*>(&score), 1);
                 scores.push_back((short)score);
                 total_score += (short)score;
             }
-        } else if (terms.size() == 3) {
-            triplet_prefix_binary.seekg(cur_pos);
+        } else if (cur_posting.term_size == 3) {
+            triplet_prefix_binary.seekg(cur_posting.cur_pos);
             triplet_prefix_binary.read(reinterpret_cast<char*>(&did), 4);
-            for (int i = 0; i < terms.size(); i++) {
+            for (int i = 0; i < cur_posting.term_size; i++) {
                 unsigned char score;
                 triplet_prefix_binary.read(reinterpret_cast<char*>(&score), 1);
                 scores.push_back((short)score);
                 total_score += (short)score;
             }
-        } else if (terms.size() == 4) {
-            quadruplet_prefix_binary.seekg(cur_pos);
+        } else if (cur_posting.term_size == 4) {
+            quadruplet_prefix_binary.seekg(cur_posting.cur_pos);
             quadruplet_prefix_binary.read(reinterpret_cast<char*>(&did), 4);
-            for (int i = 0; i < terms.size(); i++) {
+            for (int i = 0; i < cur_posting.term_size; i++) {
                 unsigned char score;
                 quadruplet_prefix_binary.read(reinterpret_cast<char*>(&score), 1);
                 scores.push_back((short)score);
@@ -372,12 +419,49 @@ int insert_posting_to_heap(priority_queue<Posting, vector<Posting>, ComparePosti
             }
         } else {
             cerr << "Wrong posting was considered" << endl;
+            continue;
         }
 
-        posting_max_heap.push(Posting(did, total_score, scores, term_string, rank));
-        return 1;
+        cur_posting.cur_pos += 4 + cur_posting.term_size;
+        count++;
+
+        didVec.push_back(did);
+        scoresVec.push_back(scores);
+        // warning: should be next one ?
+        totalScoreVec.push_back(total_score);
     }
-    return 0;
+
+    if (didVec.size() != scoresVec.size() || scoresVec.size() != totalScoreVec.size()) {
+        cout << "warning" << didVec.size() << scoresVec.size() << totalScoreVec.size() << endl;
+    }
+
+    if (didVec.size() == 0 || scoresVec.size() == 0 || totalScoreVec.size() == 0) {
+        return count;
+    }
+
+    for (int i = 0; i < didVec.size(); i++) {
+        auto& did_scores = did_scores_map[didVec[i]];
+
+        if (did_scores.first.count() == cur_posting.term_size) {
+            continue;
+        }
+        for (int j = 0; j < cur_posting.term_size; j++) {
+            uint32_t cur_term_id = cur_posting.term_ids[j];
+
+            short term_position = term_position_map[cur_term_id];
+            if (!did_scores.first.test(term_position)) {
+                did_scores.second += scoresVec[i][j];
+                did_scores.first.set(term_position);
+            }
+        }
+    }
+
+    cur_posting.total_score = totalScoreVec.back();
+    if (cur_posting.cur_pos < cur_posting.end_pos) {
+        posting_max_heap.push(cur_posting);
+    }
+
+    return count;
 }
 
 template <typename IndexType, typename WandType>
@@ -474,29 +558,39 @@ void kt_thresholds(
     dense_hash_map<string, pair<int64_t, int64_t>, hash<string>, eqstr> lex_map;
     lex_map.set_empty_key("NULL");
 
+    single_prefix_binary.open(single_prefix_path, std::ios::in | std::ios::binary);
+    /*single_prefix_binary.seekg(0, std::ios::end);
+    std::streamsize fileSize = single_prefix_binary.tellg();
+    single_prefix_binary.seekg(0, std::ios::beg);
+
+    single_prefix_binary_vec.resize(fileSize);
+    single_prefix_binary.read(single_prefix_binary_vec.data(), fileSize);*/
     load_lexicon(lex_map, sin_freq_file, single_gram_path, single_lexicon_path, 1);
+
     if (termConsidered >= 2) {
         load_lexicon(lex_map, dup_freq_file, duplet_gram_path, duplet_lexicon_path, 2);
+        duplet_prefix_binary.open(duplet_prefix_path, std::ios::in | std::ios::binary);
     }
     if (termConsidered >= 3) {
         load_lexicon(lex_map, tri_freq_file, triplet_gram_path, triplet_lexicon_path, 3);
+        triplet_prefix_binary.open(triplet_prefix_path, std::ios::in | std::ios::binary);
     }
     if (termConsidered >= 4) {
         load_lexicon(lex_map, qud_freq_file, quadruplet_gram_path, quadruplet_lexicon_path, 4);
+        quadruplet_prefix_binary.open(quadruplet_prefix_path, std::ios::in | std::ios::binary);
     }
 
-    single_prefix_binary.open(single_prefix_path, std::ios::in | std::ios::binary);
-    duplet_prefix_binary.open(duplet_prefix_path, std::ios::in | std::ios::binary);
-    triplet_prefix_binary.open(triplet_prefix_path, std::ios::in | std::ios::binary);
-    quadruplet_prefix_binary.open(quadruplet_prefix_path, std::ios::in | std::ios::binary);
+
 
 
     vector<float> realThreshold;
 
-    vector<float> singleThreshold;
-    vector<int> singleEstimatedK;
-    vector<int> budgetUsed;
-    vector<float> singleQueryTimeVec;
+    vector<float> beforeLookupThreshold;
+    vector<float> finalThreshold;
+    vector<int> heapBudgetUsed;
+    vector<float> heapTimeVec;
+    vector<float> lookupTimeVec;
+    vector<float> wholeTimeVec;
 
     auto t_start = std::chrono::high_resolution_clock::now();
     auto t_end = std::chrono::high_resolution_clock::now();
@@ -527,10 +621,12 @@ void kt_thresholds(
 
         // If doc less than k
         if (allTermThreshold == -1.0 || query_length > MaxQueryLen) {
-            singleThreshold.push_back(-1.0);
-            singleEstimatedK.push_back(-1);
-            singleQueryTimeVec.push_back(-1.0);
-            budgetUsed.push_back(-1);
+            finalThreshold.push_back(0.0);
+            beforeLookupThreshold.push_back(0.0);
+            wholeTimeVec.push_back(0.0);
+            heapTimeVec.push_back(0.0);
+            lookupTimeVec.push_back(0.0);
+            heapBudgetUsed.push_back(0);
             continue;
         }
 
@@ -540,8 +636,10 @@ void kt_thresholds(
         float curEstimate;
 
         // Last one will be the total score
-        dense_hash_map<uint64_t, pair<bitset<MaxQueryLen>, vector<short>>, hash<uint64_t>, eq64int> did_scores_map;
+        dense_hash_map<uint64_t, pair<bitset<MaxQueryLen>, short>, hash<uint64_t>, eq64int> did_scores_map;
         did_scores_map.set_empty_key(numeric_limits<uint64_t>::max());
+        did_scores_map.resize(budget + 1);
+
         dense_hash_map<uint32_t, short, hash<uint32_t>, eq32int> term_position_map;
         term_position_map.set_empty_key(numeric_limits<uint32_t>::max());
 
@@ -551,54 +649,114 @@ void kt_thresholds(
             pos++;
         }
 
-        //t_start = std::chrono::high_resolution_clock::now();
         for (string comb : allPossibleComb) {
             if (lex_map.find(comb) != lex_map.end()) {
-                insert_posting_to_heap(posting_max_heap, comb, 0, lex_map);
+                //insert_posting_to_heap(posting_max_heap, comb, 0, lex_map);
+                //insert_posting_to_heap_map(posting_max_heap, comb, 0, term_score_map);
+                vector<uint32_t> term_ids = getTermsFromString(comb);
+                short term_size = term_ids.size();
+                int64_t start_pos = lex_map[comb].first;
+                int64_t end_pos = lex_map[comb].second;
+                int64_t cur_pos = start_pos + 4;
+
+                if (cur_pos < end_pos) {
+                    int did;
+                    short total_score = 0;
+
+                    if (term_size == 1) {
+                        single_prefix_binary.seekg(cur_pos);
+                        single_prefix_binary.read(reinterpret_cast<char*>(&did), 4);
+                        for (int i = 0; i < term_size; i++) {
+                            unsigned char score;
+                            single_prefix_binary.read(reinterpret_cast<char*>(&score), 1);
+                            total_score += (short)score;
+                        }
+                    } else if (term_size == 2) {
+                        duplet_prefix_binary.seekg(cur_pos);
+                        duplet_prefix_binary.read(reinterpret_cast<char*>(&did), 4);
+                        for (int i = 0; i < term_size; i++) {
+                            unsigned char score;
+                            duplet_prefix_binary.read(reinterpret_cast<char*>(&score), 1);
+                            total_score += (short)score;
+                        }
+                    } else if (term_size == 3) {
+                        triplet_prefix_binary.seekg(cur_pos);
+                        triplet_prefix_binary.read(reinterpret_cast<char*>(&did), 4);
+                        for (int i = 0; i < term_size; i++) {
+                            unsigned char score;
+                            triplet_prefix_binary.read(reinterpret_cast<char*>(&score), 1);
+                            total_score += (short)score;
+                        }
+                    } else if (term_size == 4) {
+                        quadruplet_prefix_binary.seekg(cur_pos);
+                        quadruplet_prefix_binary.read(reinterpret_cast<char*>(&did), 4);
+                        for (int i = 0; i < term_size; i++) {
+                            unsigned char score;
+                            quadruplet_prefix_binary.read(reinterpret_cast<char*>(&score), 1);
+                            total_score += (short)score;
+                        }
+                    } else {
+                        cerr << "Wrong posting was considered" << endl;
+                        continue;
+                    }
+
+                    Posting cur_posting = Posting(term_ids, total_score, term_size, comb, cur_pos, end_pos);
+                    posting_max_heap.push(cur_posting);
+                }
             }
         }
 
         //clog << "initial heap size is: " << posting_max_heap.size() << endl;
         int cur_budget = budget;
+        auto t_heap_start = std::chrono::high_resolution_clock::now();
 
         while (cur_budget > 0 && posting_max_heap.size() > 0) {
             Posting top_posting = posting_max_heap.top();
             posting_max_heap.pop();
-            int if_push_success = insert_posting_to_heap(posting_max_heap, top_posting.term_string, top_posting.rank + 1, lex_map);
+            int if_push_success = insert_posting_to_heap(posting_max_heap, top_posting, 1, did_scores_map, term_position_map);
 
-            if (if_push_success == 1) {
-                //clog << "push success" << endl;
-                cur_budget--;
-            } else {
-                //clog << "push failed" << endl;
+            if (if_push_success > 0) {
+                cur_budget = cur_budget - if_push_success;
             }
 
-            uint64_t popped_posting_did = top_posting.did;
-            vector<uint32_t> popped_posting_term_ids = getTermsFromString(top_posting.term_string);
-            vector<short> popped_posting_term_scores = top_posting.scores;
+            /*auto& did_scores = did_scores_map[top_posting.did];
 
-            if (did_scores_map.find(popped_posting_did) == did_scores_map.end()) {
-                did_scores_map[popped_posting_did].second.resize(query_length + 1, 0);
-            }
-
-            if (did_scores_map[popped_posting_did].first.count() == query_length) {
+            if (did_scores.first.count() == query_length) {
                 continue;
             }
-            for (int i = 0; i < popped_posting_term_ids.size(); i++) {
-                uint32_t cur_term_id = popped_posting_term_ids[i];
-                short cur_term_score = popped_posting_term_scores[i];
+            for (int i = 0; i < top_posting.term_ids.size(); i++) {
+                uint32_t cur_term_id = top_posting.term_ids[i];
+                short cur_term_score = top_posting.scores[i];
                 short term_position = term_position_map[cur_term_id];
-                if (!did_scores_map[popped_posting_did].first.test(term_position)) {
-                    did_scores_map[popped_posting_did].second[term_position] = cur_term_score;
-                    did_scores_map[popped_posting_did].second.back() += cur_term_score;
-                    did_scores_map[popped_posting_did].first.set(term_position);
+                if (!did_scores.first.test(term_position)) {
+                    did_scores.second += cur_term_score;
+                    did_scores.first.set(term_position);
                 }
-            }
+            }*/
             //clog << "did scores map count is: " << did_scores_map.size() << endl;
+        }
+
+        auto t_heap_end = std::chrono::high_resolution_clock::now();
+        heapTimeVec.push_back(std::chrono::duration<double, std::nano>(t_heap_end-t_heap_start).count());
+        heapBudgetUsed.push_back(budget - cur_budget);
+
+        // Document MUF Before LookUp
+        if (did_scores_map.size() >= k) {
+            vector<short> all_combined_scores;
+
+            for(auto key_scores : did_scores_map) {
+                all_combined_scores.push_back(key_scores.second.second);
+            }
+
+            sort(all_combined_scores.begin(), all_combined_scores.end(), greater<short>());
+            beforeLookupThreshold.push_back(all_combined_scores[k - 1]);
+        } else {
+            beforeLookupThreshold.push_back(0.0);
         }
 
 
         // Do lookup here
+        auto t_lookup_start = std::chrono::high_resolution_clock::now();
         for (int i = 0; i < query_length; i++) {
             vector<uint64_t> curDidForLookUp;
 
@@ -617,105 +775,54 @@ void kt_thresholds(
 
             vector<double> lookupResult(curDidForLookUp.size(), 0.0);
 
-            if (count >= 99999) {
-                cout << "curDidForLookUp size " << ": " << curDidForLookUp.size() << endl;
-            }
-
             vector<double> apiLookupResult;
             vector<uint64_t> curDidForLookUpCopy(curDidForLookUp);
 
             if (curDidForLookUp.size() > 0) {
 
-                //vector<double> apiLookupResult(curDidForLookUp.size(), 0.0);
-
-                apiLookupResult = allocate.did_score_list_final<IndexType, WandType>(index, wdata, scorer, single_term_query, curDidForLookUpCopy);
+                //apiLookupResult = allocate.did_score_list_final<IndexType, WandType>(index, wdata, scorer, single_term_query, curDidForLookUpCopy);
+                apiLookupResult.resize(curDidForLookUp.size(), 0.0);
                 if (apiLookupResult.size() != curDidForLookUp.size()) {
                     continue;
                 }
 
                 for (int apiLookupResultIndex = 0; apiLookupResultIndex < apiLookupResult.size(); apiLookupResultIndex++) {
-                    if (count >= 99999) {
-                        cout << apiLookupResultIndex << ": " << apiLookupResult[apiLookupResultIndex] << endl;
-                    }
-                    if (apiLookupResult[apiLookupResultIndex] < 32767.0) {
-                        lookupResult[apiLookupResultIndex] += apiLookupResult[apiLookupResultIndex];
-                    }
+                    lookupResult[apiLookupResultIndex] += apiLookupResult[apiLookupResultIndex];
                 }
-
-                apiLookupResult.clear();
-
-                if (count >= 99999) {
-                    cout << "query_length" << query_length << endl;
-                }
-
-                if (count >= 99999) {
-                    cout << count << "move result finished" << i << endl;
-                }
-
             }
-
-            if (count >= 99999) {
-                cout << count << "out if" << i << endl;
-            }
-
 
             for (int j = 0; j < curDidForLookUp.size(); j++) {
                 if (static_cast<short>(lookupResult[j]) <= 0) {
                     continue;
                 }
                 did_scores_map[curDidForLookUp[j]].first.set(i);
-                did_scores_map[curDidForLookUp[j]].second[i] = static_cast<short>(lookupResult[j]);
-                //cout << "did: " << curDidForLookUp[j] << ", ";
-                //cout << "score before: " << did_scores_map[curDidForLookUp[j]].second.back() << ", ";
-                did_scores_map[curDidForLookUp[j]].second.back() += static_cast<short>(lookupResult[j]);
-                //cout << "score after: " << did_scores_map[curDidForLookUp[j]].second.back() << endl;
-            }
-
-            if (count >= 99999) {
-                cout << count << "out combine" << i << endl;
+                did_scores_map[curDidForLookUp[j]].second += static_cast<short>(lookupResult[j]);
             }
         }
 
+        auto t_lookup_end = std::chrono::high_resolution_clock::now();
+        lookupTimeVec.push_back(std::chrono::duration<double, std::nano>(t_lookup_end-t_lookup_start).count());
 
-
-        //cout << "total distinct did get: " << did_scores_map.size() << endl;
         if (did_scores_map.size() >= k) {
             vector<short> all_combined_scores;
 
             for(auto key_scores : did_scores_map) {
-                all_combined_scores.push_back(key_scores.second.second.back());
+                all_combined_scores.push_back(key_scores.second.second);
             }
 
             sort(all_combined_scores.begin(), all_combined_scores.end(), greater<short>());
             curEstimate = all_combined_scores[k - 1];
-            //clog << "budget remaining: " << cur_budget << endl;
         } else {
-            curEstimate = -2.0;
+            curEstimate = 0.0;
         }
 
 
         t_end = std::chrono::high_resolution_clock::now();
-        singleThreshold.push_back(curEstimate);
-        singleQueryTimeVec.push_back(std::chrono::duration<double, std::milli>(t_end-t_start).count());
-
-        if (curEstimate < 0) {
-            singleEstimatedK.push_back(-2);
-            budgetUsed.push_back(-2);
-            continue;
-        }
-
-        for (int i = 0; i < allTermResults.size() - 1; i++) {
-            if (allTermResults[i].first >= curEstimate && allTermResults[i + 1].first <= curEstimate) {
-                singleEstimatedK.push_back(i + 2);
-                break;
-            } else if (i == allTermResults.size() - 2) {
-                singleEstimatedK.push_back(i + 2);
-                break;
-            }
-        }
+        finalThreshold.push_back(curEstimate);
+        wholeTimeVec.push_back(std::chrono::duration<double, std::nano>(t_end-t_start).count());
 
         count++;
-        if (count % 10 == 0) {
+        if (count % 100 == 0) {
             clog << count << "queries consider terms = " << termConsidered << " k = " << k << " processed -- combine terms" << endl;
         }
     }
@@ -725,8 +832,61 @@ void kt_thresholds(
     triplet_prefix_binary.close();
     quadruplet_prefix_binary.close();
 
+    // calculate Before LookUp MUF
+    if (realThreshold.size() == beforeLookupThreshold.size()) {
+        double TotalMUF = 0.0;
+        for(int i = 0; i < realThreshold.size(); i++) {
+            TotalMUF += (beforeLookupThreshold[i] / realThreshold[i]);
+        }
+
+        cout << beforeLookupThreshold.size() << " values considered, MUF Before Lookup for " << beforeLookupThreshold.size() << " queries is: " << (TotalMUF / beforeLookupThreshold.size()) << endl;
+    }
+
+    // calculate Final MUF
+    if (realThreshold.size() == finalThreshold.size()) {
+        double TotalMUF = 0.0;
+        for(int i = 0; i < realThreshold.size(); i++) {
+            TotalMUF += (finalThreshold[i] / realThreshold[i]);
+        }
+
+        cout << finalThreshold.size() << " values considered, MUF Final for " << finalThreshold.size() << " queries is: " << (TotalMUF / finalThreshold.size()) << endl;
+    }
+
+    // calculate Heap Budget Used
+    int TotalHeapBudgetUsed = 0;
+    for(int i = 0; i < heapBudgetUsed.size(); i++) {
+        TotalHeapBudgetUsed += heapBudgetUsed[i];
+    }
+
+    cout << heapBudgetUsed.size() << " values considered, Average Heap Budget Used for " << heapBudgetUsed.size() << " queries is: " << (TotalHeapBudgetUsed / heapBudgetUsed.size()) << endl;
+
+    // calculate Heap Time Used
+    double TotalHeapTimeUsed = 0.0;
+    for(int i = 0; i < heapTimeVec.size(); i++) {
+        TotalHeapTimeUsed += heapTimeVec[i];
+    }
+
+    cout << heapTimeVec.size() << " values considered, Average Heap Time Used for " << heapTimeVec.size() << " queries is: " << (TotalHeapTimeUsed / heapTimeVec.size()) << endl;
+    cout << "Average Heap Time Used for each Posting is " << (TotalHeapTimeUsed / heapTimeVec.size()/(TotalHeapBudgetUsed / heapBudgetUsed.size())) << endl;
+
+    // calculate Lookup Time Used
+    double TotalLookupTimeUsed = 0.0;
+    for(int i = 0; i < lookupTimeVec.size(); i++) {
+        TotalLookupTimeUsed += lookupTimeVec[i];
+    }
+
+    cout << lookupTimeVec.size() << " values considered, Average Lookup Time Used for " << lookupTimeVec.size() << " queries is: " << (TotalLookupTimeUsed / lookupTimeVec.size()) << endl;
+
+    // calculate Whole Time Used
+    double WholeTimeUsed = 0.0;
+    for(int i = 0; i < wholeTimeVec.size(); i++) {
+        WholeTimeUsed += wholeTimeVec[i];
+    }
+
+    cout << wholeTimeVec.size() << " values considered, Average all processing Time Used for " << wholeTimeVec.size() << " queries is: " << (WholeTimeUsed / wholeTimeVec.size()) << endl;
+
     // print result
-    std::cout << "real threshold" << endl;
+    /*std::cout << "real threshold" << endl;
     std::cout << "*************************************************************" << endl;
     for(int i = 0; i < realThreshold.size(); i++) {
         cout << realThreshold[i] << '\n';
@@ -734,8 +894,8 @@ void kt_thresholds(
 
     std::cout << "single threshold" << endl;
     std::cout << "*************************************************************" << endl;
-    for(int i = 0; i < singleThreshold.size(); i++) {
-        cout << singleThreshold[i] << '\n';
+    for(int i = 0; i < finalThreshold.size(); i++) {
+        cout << finalThreshold[i] << '\n';
     }
     std::cout << "single estimated K" << endl;
     std::cout << "*************************************************************" << endl;
@@ -744,15 +904,15 @@ void kt_thresholds(
     }
     std::cout << "single estimated time" << endl;
     std::cout << "*************************************************************" << endl;
-    for(int i = 0; i < singleQueryTimeVec.size(); i++) {
-        cout << singleQueryTimeVec[i] << '\n';
+    for(int i = 0; i < wholeTimeVec.size(); i++) {
+        cout << wholeTimeVec[i] << '\n';
     }
 
     std::cout << "single budget used" << endl;
     std::cout << "*************************************************************" << endl;
-    for(int i = 0; i < budgetUsed.size(); i++) {
-        cout << budgetUsed[i] << '\n';
-    }
+    for(int i = 0; i < heapBudgetUsed.size(); i++) {
+        cout << heapBudgetUsed[i] << '\n';
+    }*/
 }
 
 int main(int argc, const char** argv) {
